@@ -1,11 +1,7 @@
-  ---
 
-  Presentation: The AI Adaptive Assistant - A Personalized Learning Platform
+ The AI Adaptive Assistant - A Personalized Learning Platform
 
   1. Project Overview
-
-  Good morning/afternoon, Professor. I'm here today to present the "AI Adaptive Assistant," a personalized learning
-  platform designed to enhance the educational experience for students.
 
   The core purpose of this project is to provide students with a suite of AI-powered tools to help them better
   understand and engage with their learning materials. In the current version, students can upload their own study

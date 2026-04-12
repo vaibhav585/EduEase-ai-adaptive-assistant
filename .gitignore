@@ -1,22 +1,19 @@
-# Python
+# Ignore ALL virtual environments
+venv/
+venv*/
+**/venv/
+**/venv*/
+
+# Python cache
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
+
+# Environment files
+.env
 
 # Node
 node_modules/
-npm-debug.log
+frontend/node_modules/
 
-# Service Account Key
-serviceAccountKey.json
-
-# IDE
-.idea/
-.vscode/
-
-# Credentials
-credentials and configurations apikeys etc..txt
+# Secrets
+backend/serviceAccountKey.json

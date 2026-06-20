@@ -1,0 +1,19 @@
+# Ignore ALL virtual environments
+venv/
+venv*/
+**/venv/
+**/venv*/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Environment files
+.env
+
+# Node
+node_modules/
+frontend/node_modules/
+
+# Secrets
+backend/serviceAccountKey.json

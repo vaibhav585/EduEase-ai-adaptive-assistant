@@ -15,6 +15,7 @@ from langchain_classic.memory import ConversationBufferMemory
 from cachetools import TTLCache
 import threading
 from starlette.concurrency import run_in_threadpool
+from ingestion import ingest, retrieve
 
 app = FastAPI()
 nlp = spacy.load("en_core_web_sm")
@@ -79,7 +80,11 @@ async def upload_pdf(file: UploadFile = File(...)):
         page_text = page.extract_text()
         if page_text:
             text += page_text
-    return {"text": text}
+    if text.strip():
+        chunks = await run_in_threadpool(ingest, text, file.filename or "pdf")
+    else:
+        chunks = 0
+    return {"text": text, "chunks_ingested": chunks}
 
 @app.post("/simplify-text/")
 async def simplify_text(text: str = Body(..., embed=True), _user: dict = Depends(verify_user)):
@@ -104,7 +109,8 @@ async def simplify_text(text: str = Body(..., embed=True), _user: dict = Depends
 async def add_content(text: str = Form(...), _user: dict = Depends(verify_user)):
     try:
         doc_ref = db.collection("content").add({"text": text})
-        return {"id": doc_ref.id}
+        chunks = await run_in_threadpool(ingest, text, "manual")
+        return {"id": doc_ref.id, "chunks_ingested": chunks}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -155,9 +161,20 @@ async def generate_quiz(text: str = Body(..., embed=True), _user: dict = Depends
         raise HTTPException(status_code=400, detail=f"Error generating quiz: {e}")
 
 @app.post("/chatbot/")
-async def chatbot(text: str = Body(...), session_id: str = Body(...), _user: dict = Depends(verify_user)):
+async def chatbot(
+    text: str = Body(...),
+    session_id: str = Body(...),
+    grade_level: str | None = Body(None),
+    reading_difficulty: str | None = Body(None),
+    _user: dict = Depends(verify_user),
+):
+    context_docs = await run_in_threadpool(
+        retrieve, text, 4, grade_level, reading_difficulty,
+    )
+    context = "\n\n".join(doc.page_content for doc in context_docs) if context_docs else ""
+    prompt = f"Context:\n{context}\n\nQuestion: {text}" if context else text
     chain = _get_chain(session_id)
-    response = await run_in_threadpool(chain.predict, input=text)
+    response = await run_in_threadpool(chain.predict, input=prompt)
     return {"response": response}
 
 

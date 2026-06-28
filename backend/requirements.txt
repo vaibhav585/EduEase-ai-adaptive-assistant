@@ -17,3 +17,5 @@ firebase-admin
 cachetools
 faiss-cpu
 sentence-transformers
+langchain-community
+langchain-text-splitters

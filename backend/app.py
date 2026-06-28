@@ -432,18 +432,24 @@ async def get_content(_user: dict = Depends(verify_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 _QUIZ_SYSTEM_PROMPT = (
-    "You are an educational quiz generator. Given a passage of text, generate quiz questions.\n"
-    "Output ONLY a valid JSON array. No markdown, no explanation.\n"
-    "Each element MUST have exactly these keys:\n"
-    '  "question": the question string\n'
-    '  "options": array of 4 answer choices (for fill_blank and mcq) or ["True","False"] for true_false\n'
-    '  "answer": the correct option string (must match one element in options exactly)\n'
-    '  "question_type": one of "fill_blank", "true_false", "mcq"\n'
-    '  "topic": a broad educational domain header (2-5 words) like "Cell Biology", '
-    '"Computer Memory Architecture", "Photosynthesis Process", "Gravity & Motion". '
-    "NEVER quote raw words from the text. Always use a standardized academic category name.\n\n"
-    "Generate a balanced mix of all three question types.\n"
-    "Generate at most 10 questions.\n"
+    "You are an educational quiz generator for children. Given a passage, generate EXACTLY 9 questions.\n"
+    "Output ONLY a raw JSON array — no markdown fences, no commentary.\n\n"
+    "MANDATORY DISTRIBUTION — you MUST generate exactly:\n"
+    "  - 3 questions with question_type \"mcq\"\n"
+    "  - 3 questions with question_type \"true_false\"\n"
+    "  - 3 questions with question_type \"fill_blank\"\n"
+    "Shuffle them randomly in the array. Do NOT group by type.\n\n"
+    "SCHEMA — every object MUST have exactly these 5 keys:\n"
+    '  "question"       : string — the question text\n'
+    '  "options"         : string[] — answer choices\n'
+    '  "answer"          : string — correct choice (MUST match one element in options exactly)\n'
+    '  "question_type"   : string — one of "mcq", "true_false", "fill_blank"\n'
+    '  "topic"           : string — broad academic category (2-5 words, e.g. "Cell Biology", "Gravity & Motion")\n\n'
+    "FORMAT RULES per type:\n"
+    '  mcq:        "options" has exactly 4 choices. One is correct.\n'
+    '  true_false: "options" is exactly ["True", "False"]. "answer" is "True" or "False".\n'
+    '  fill_blank: "question" contains "______" for the blank. "options" has exactly 4 choices.\n\n'
+    "TOPIC RULE: Never quote raw words from the passage. Use standardized academic domain names.\n"
 )
 
 
@@ -457,9 +463,15 @@ def _generate_quiz_via_llm(text: str) -> list[dict]:
         return []
     valid = []
     for q in questions:
-        if all(k in q for k in ("question", "options", "answer", "question_type", "topic")):
-            if isinstance(q["options"], list) and q["answer"] in q["options"]:
-                valid.append(q)
+        if not all(k in q for k in ("question", "options", "answer", "question_type", "topic")):
+            continue
+        if not isinstance(q["options"], list) or len(q["options"]) < 2:
+            continue
+        if q["answer"] not in q["options"]:
+            continue
+        if q["question_type"] not in ("mcq", "true_false", "fill_blank"):
+            continue
+        valid.append(q)
     return valid
 
 
@@ -467,24 +479,49 @@ def _generate_quiz_spacy_fallback(text: str) -> list[dict]:
     doc = nlp(text)
     questions: list[dict] = []
     all_words = [t.text for t in doc if t.pos_ in ("NOUN", "VERB", "ADJ")]
-    for i, sent in enumerate(s for s in doc.sents if len(s.text.split()) > 5):
+    eligible = [s for s in doc.sents if len(s.text.split()) > 5]
+
+    for i, sent in enumerate(eligible):
         blanks = [t.text for t in sent if t.pos_ in ("NOUN", "VERB", "ADJ")]
         if not blanks:
             continue
         blank = random.choice(blanks)
-        question_text = sent.text.replace(blank, "______")
-        options = [blank]
-        distractors = [w for w in all_words if w != blank]
-        random.shuffle(distractors)
-        for _ in range(3):
-            options.append(distractors.pop() if distractors else f"Option {len(options)}")
-        random.shuffle(options)
         chunks = [c.text.title() for c in nlp(sent.text).noun_chunks if len(c.text.split()) >= 2]
         topic = chunks[0] if chunks else "General Knowledge"
-        questions.append({
-            "question": question_text, "options": options, "answer": blank,
-            "question_type": "fill_blank", "topic": topic,
-        })
+
+        qtype = i % 3
+        if qtype == 0:
+            question_text = sent.text.replace(blank, "______")
+            options = [blank]
+            distractors = [w for w in all_words if w != blank]
+            random.shuffle(distractors)
+            for _ in range(3):
+                options.append(distractors.pop() if distractors else f"Option {len(options)}")
+            random.shuffle(options)
+            questions.append({
+                "question": question_text, "options": options, "answer": blank,
+                "question_type": "fill_blank", "topic": topic,
+            })
+        elif qtype == 1:
+            questions.append({
+                "question": f"True or False: {sent.text}",
+                "options": ["True", "False"], "answer": "True",
+                "question_type": "true_false", "topic": topic,
+            })
+        else:
+            nouns = [t.text for t in sent if t.pos_ == "NOUN" and len(t.text) > 2]
+            target = nouns[0] if nouns else blank
+            q_text = f"Which of the following is discussed in this context?" if len(sent.text) > 80 else f"Which term relates to: \"{sent.text[:60]}\"?"
+            options = [target]
+            distractors = [w for w in all_words if w != target and len(w) > 2]
+            random.shuffle(distractors)
+            for _ in range(3):
+                options.append(distractors.pop() if distractors else f"Option {len(options)}")
+            random.shuffle(options)
+            questions.append({
+                "question": q_text, "options": options, "answer": target,
+                "question_type": "mcq", "topic": topic,
+            })
     return questions
 
 

@@ -2,11 +2,13 @@ import React, { useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import Eye from '../components/Eye';
+import type { Sentiment } from '../components/Eye';
 
 const LearningPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { text } = location.state || { text: '' };
+  const [latestSentiment, setLatestSentiment] = React.useState<Sentiment | null>(null);
 
   const [words, setWords] = React.useState<string[]>([]);
   const [sentences, setSentences] = React.useState<string[][]>([]);
@@ -99,14 +101,18 @@ const LearningPage: React.FC = () => {
   }, [navigate, simplifiedText]);
 
   const renderContent = () => {
-    if (!simplifiedText) return <p className="text-slate-500">Loading content...</p>;
+    if (!simplifiedText) return <p className="text-slate-500" role="status">Loading content...</p>;
     if (highlightMode === 'word') {
       const currentSentenceWords = sentences[currentSentenceIndex] || [];
       return (
-        <div className="text-3xl sm:text-4xl font-semibold mb-6 min-h-[2.5rem] leading-snug tracking-wide">
+        <div
+          className="text-3xl sm:text-4xl font-semibold mb-6 min-h-[2.5rem] leading-snug tracking-wide"
+          aria-label={`Sentence ${currentSentenceIndex + 1} of ${sentences.length}, word ${currentIndex + 1} of ${currentSentenceWords.length}`}
+        >
           {currentSentenceWords.map((word, idx) => (
             <span
               key={idx}
+              aria-current={idx === currentIndex ? "true" : undefined}
               className={idx === currentIndex ? 'bg-amber-200 px-2 rounded-md shadow-sm' : ''}
             >
               {word}{' '}
@@ -116,10 +122,14 @@ const LearningPage: React.FC = () => {
       );
     }
     return (
-      <div className="text-xl sm:text-2xl font-semibold mb-6 leading-relaxed tracking-wide">
+      <div
+        className="text-xl sm:text-2xl font-semibold mb-6 leading-relaxed tracking-wide"
+        aria-label={`Sentence ${currentSentenceIndex + 1} of ${sentences.length}`}
+      >
         {sentences.map((sentenceWords, sIdx) => (
           <span
             key={sIdx}
+            aria-current={sIdx === currentSentenceIndex ? "true" : undefined}
             className={sIdx === currentSentenceIndex ? 'bg-emerald-200/70 px-2 rounded-md shadow-sm' : ''}
           >
             {sentenceWords.join(' ')}{' '}
@@ -137,6 +147,7 @@ const LearningPage: React.FC = () => {
           <h2 className="text-lg font-semibold text-slate-800 mb-3 text-center">👁️ Focus Tracker</h2>
           <Eye
             targetId="reading-area"
+            sentiment={latestSentiment}
             onFocusChange={(isFocused) => {
               if (!isFocused && isPlaying) setIsPlaying(false);
             }}
@@ -178,7 +189,14 @@ const LearningPage: React.FC = () => {
           </div>
 
           {/* Reading Area */}
-          <div id="reading-area" className="bg-indigo-50/60 rounded-xl p-4 border border-indigo-100">
+          <div
+            id="reading-area"
+            role="region"
+            aria-label="Reading area"
+            aria-live="polite"
+            aria-atomic="false"
+            className="bg-indigo-50/60 rounded-xl p-4 border border-indigo-100"
+          >
             {renderContent()}
           </div>
 

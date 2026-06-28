@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from typing import List, Optional
+from pydantic import BaseModel, Field
+from typing import List, Literal, Optional
 
 class TextToSimplify(BaseModel):
     text: str
@@ -30,5 +30,11 @@ class ChatbotRequest(BaseModel):
     user_id: str
     session_id: str
 
+class TurnSentiment(BaseModel):
+    frustration_score: float = Field(ge=0.0, le=1.0)
+    suggested_action: Literal["continue", "simplify", "offer_break"]
+
+
 class ChatbotResponse(BaseModel):
     reply: str
+    sentiment: TurnSentiment

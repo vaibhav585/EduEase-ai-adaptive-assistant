@@ -6,9 +6,15 @@ declare global {
   }
 }
 
+export type Sentiment = {
+  frustration_score: number;
+  suggested_action: "continue" | "simplify" | "offer_break";
+};
+
 type Props = {
   targetId?: string;
   onFocusChange?: (focused: boolean) => void;
+  sentiment?: Sentiment | null;
 };
 
 // 5 calibration points
@@ -22,7 +28,7 @@ const CALIBRATION_POINTS = [
 
 const CLICKS_PER_POINT = 5;
 
-const Eye: React.FC<Props> = ({ targetId, onFocusChange }) => {
+const Eye: React.FC<Props> = ({ targetId, onFocusChange, sentiment }) => {
   const [status, setStatus] = useState<
     "loading" | "ready" | "calibrating" | "tracking" | "error"
   >("loading");
@@ -33,6 +39,41 @@ const Eye: React.FC<Props> = ({ targetId, onFocusChange }) => {
   const focusedRef = useRef(true);
   const lastDataTimeRef = useRef(Date.now());
   const gazeCountRef = useRef(0);
+  const [showBanner, setShowBanner] = useState(false);
+  const [bannerMessage, setBannerMessage] = useState("");
+  const bannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerBanner = useCallback((message: string) => {
+    setBannerMessage(message);
+    setShowBanner(true);
+    if (bannerTimeoutRef.current) clearTimeout(bannerTimeoutRef.current);
+    bannerTimeoutRef.current = setTimeout(() => setShowBanner(false), 8000);
+  }, []);
+
+  useEffect(() => {
+    if (!sentiment) return;
+    if (sentiment.frustration_score > 0.7 || sentiment.suggested_action === "offer_break") {
+      triggerBanner("You seem to be having a tough time. How about a short break? You're doing great!");
+    } else if (sentiment.suggested_action === "simplify") {
+      triggerBanner("Would you like me to simplify the text for you?");
+    }
+  }, [sentiment, triggerBanner]);
+
+  useEffect(() => {
+    if (status !== "tracking") return;
+    if (!focused) {
+      triggerBanner("Looks like you looked away. Take a breath, then come back when you're ready!");
+    }
+  }, [focused, status, triggerBanner]);
+
+  const speakBanner = useCallback(() => {
+    if ("speechSynthesis" in window && bannerMessage) {
+      const utterance = new SpeechSynthesisUtterance(bannerMessage);
+      utterance.lang = "en-US";
+      utterance.rate = 0.9;
+      speechSynthesis.speak(utterance);
+    }
+  }, [bannerMessage]);
 
   // ───── Initialize WebGazer ─────
   useEffect(() => {
@@ -167,7 +208,7 @@ const Eye: React.FC<Props> = ({ targetId, onFocusChange }) => {
     return (
       <div className="flex flex-col items-center p-4 bg-[#fdf7f2] rounded-2xl shadow-md">
         <h2 className="text-lg font-semibold mb-2">👁️ Focus Tracker</h2>
-        <p className="animate-pulse text-blue-600 text-sm">Starting webcam…</p>
+        <p className="motion-safe:animate-pulse text-blue-600 text-sm" role="status">Starting webcam…</p>
       </div>
     );
   }
@@ -226,9 +267,10 @@ const Eye: React.FC<Props> = ({ targetId, onFocusChange }) => {
 
           <button
             onClick={handleCalibrationClick}
-            className="absolute w-12 h-12 rounded-full bg-yellow-400 hover:bg-yellow-300 
+            aria-label={`Calibration point ${calPointIndex + 1} of ${CALIBRATION_POINTS.length}, click ${CLICKS_PER_POINT - clickCount} more times`}
+            className="absolute w-12 h-12 rounded-full bg-yellow-400 hover:bg-yellow-300
                        border-4 border-yellow-200 shadow-lg shadow-yellow-400/50
-                       animate-pulse cursor-pointer transition-all hover:scale-110
+                       motion-safe:animate-pulse cursor-pointer transition-all hover:scale-110
                        flex items-center justify-center"
             style={{
               left: `${point.x}%`,
@@ -257,24 +299,52 @@ const Eye: React.FC<Props> = ({ targetId, onFocusChange }) => {
 
   // status === "tracking"
   return (
-    <div className="flex flex-col items-center p-4 bg-[#fdf7f2] rounded-2xl shadow-md">
+    <div className="flex flex-col items-center p-4 bg-[#fdf7f2] rounded-2xl shadow-md relative">
       <h2 className="text-lg font-semibold mb-2">👁️ Focus Tracker</h2>
 
-      {focused ? (
-        <div className="text-center">
-          <div className="text-4xl mb-2">🌟</div>
-          <p className="text-green-600 font-semibold text-lg">Great focus!</p>
-          <p className="text-xs text-gray-500 mt-1">Keep looking at the screen</p>
+      <div
+        role="alert"
+        aria-live="assertive"
+        className={`w-full overflow-hidden motion-safe:transition-all motion-safe:duration-500 motion-safe:ease-in-out ${
+          showBanner ? "max-h-40 opacity-100 mb-3" : "max-h-0 opacity-0"
+        }`}
+      >
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+          <p className="text-amber-800 text-sm font-medium">{bannerMessage}</p>
+          <div className="flex justify-center gap-2 mt-2">
+            <button
+              onClick={speakBanner}
+              className="text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded-lg"
+            >
+              Read Aloud
+            </button>
+            <button
+              onClick={() => setShowBanner(false)}
+              className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded-lg"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
-      ) : (
-        <div className="text-center">
-          <div className="text-4xl mb-2 animate-bounce">😅</div>
-          <p className="text-red-500 font-bold text-lg animate-pulse">
-            Focus drifted!
-          </p>
-          <p className="text-xs text-gray-500 mt-1">Look back at the screen</p>
-        </div>
-      )}
+      </div>
+
+      <div aria-live="polite" aria-atomic="true">
+        {focused ? (
+          <div className="text-center">
+            <div className="text-4xl mb-2" aria-hidden="true">🌟</div>
+            <p className="text-green-600 font-semibold text-lg">Great focus!</p>
+            <p className="text-xs text-gray-500 mt-1">Keep looking at the screen</p>
+          </div>
+        ) : (
+          <div className="text-center">
+            <div className="text-4xl mb-2 motion-safe:animate-bounce" aria-hidden="true">😅</div>
+            <p className="text-red-500 font-bold text-lg motion-safe:animate-pulse">
+              Focus drifted!
+            </p>
+            <p className="text-xs text-gray-500 mt-1">Look back at the screen</p>
+          </div>
+        )}
+      </div>
 
       <button
         onClick={startCalibration}

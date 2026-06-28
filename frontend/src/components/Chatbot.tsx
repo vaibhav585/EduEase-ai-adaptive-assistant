@@ -1,12 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../services/api';
+import type { Sentiment } from './Eye';
 
 interface Message {
   text: string;
   sender: 'user' | 'bot';
 }
 
-const Chatbot: React.FC = () => {
+interface ChatbotProps {
+  onSentiment?: (sentiment: Sentiment) => void;
+}
+
+const Chatbot: React.FC<ChatbotProps> = ({ onSentiment }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,6 +35,9 @@ const Chatbot: React.FC = () => {
       const response = await api.post('/chatbot/', { text: input });
       const botMessage: Message = { text: response.data.response, sender: 'bot' };
       setMessages((prevMessages) => [...prevMessages, botMessage]);
+      if (response.data.sentiment && onSentiment) {
+        onSentiment(response.data.sentiment);
+      }
     } catch (error) {
       console.error('Error communicating with chatbot:', error);
       const errorMessage: Message = { text: 'Sorry, I am having trouble connecting right now.', sender: 'bot' };

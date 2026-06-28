@@ -4,6 +4,8 @@ from fastapi import FastAPI, File, UploadFile, Form, Body, Depends, HTTPExceptio
 from firebase_admin import auth as firebase_auth
 from PyPDF2 import PdfReader
 import io
+import json
+import re
 import spacy
 from firebase_config import db
 import random
@@ -16,9 +18,68 @@ from cachetools import TTLCache
 import threading
 from starlette.concurrency import run_in_threadpool
 from ingestion import ingest, retrieve
+from models.schemas import TurnSentiment
 
 app = FastAPI()
 nlp = spacy.load("en_core_web_sm")
+
+SAFE_FALLBACK = (
+    "Let's focus on our reading material together! "
+    "What else would you like to explore in the text?"
+)
+
+_INJECTION_PATTERNS = re.compile(
+    r"(?i)"
+    r"(?:ignore\s+(?:all\s+)?(?:previous|above|prior)\s+instructions)"
+    r"|(?:disregard\s+(?:all\s+)?(?:previous|prior)\s+(?:instructions|rules|prompts))"
+    r"|(?:you\s+are\s+now\s+(?:a|an|in)\b)"
+    r"|(?:act\s+as\s+(?:a|an)\b)"
+    r"|(?:pretend\s+(?:you(?:'re|\s+are)\s+))"
+    r"|(?:bypass\s+(?:safety|content|filter|guardrail))"
+    r"|(?:jailbreak)"
+    r"|(?:do\s+anything\s+now)"
+    r"|(?:system\s*:\s)"
+    r"|(?:\bDAN\b)"
+)
+
+_PII_EMAIL = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z]{2,}")
+_PII_PHONE = re.compile(
+    r"(?<!\d)"
+    r"(?:\+?\d{1,3}[\s.-]?)?"
+    r"(?:\(?\d{3}\)?[\s.-]?)"
+    r"\d{3}[\s.-]?\d{4}"
+    r"(?!\d)"
+)
+_PII_ZIP = re.compile(r"\b\d{5}(?:-\d{4})?\b")
+
+_TOXIC_PHRASES = re.compile(
+    r"(?i)"
+    r"(?:kill\s+(?:yourself|your\s*self|him|her|them))"
+    r"|(?:you\s+(?:are|'re)\s+(?:stupid|dumb|worthless|an?\s+idiot))"
+    r"|(?:self[- ]?harm)"
+    r"|(?:suicide\s+(?:method|how\s+to))"
+    r"|(?:nobody\s+(?:loves|cares\s+about)\s+you)"
+    r"|(?:you\s+deserve\s+to\s+(?:die|suffer))"
+    r"|(?:shut\s+up\s+(?:you\s+)?(?:idiot|moron|stupid))"
+)
+
+
+def _sanitize_pii(text: str) -> str:
+    text = _PII_EMAIL.sub("[EMAIL]", text)
+    text = _PII_PHONE.sub("[PHONE]", text)
+    text = _PII_ZIP.sub("[ZIP]", text)
+    return text
+
+
+def _validate_input(text: str) -> tuple[bool, str]:
+    if _INJECTION_PATTERNS.search(text):
+        return False, text
+    sanitized = _sanitize_pii(text)
+    return True, sanitized
+
+
+def _validate_output(text: str) -> bool:
+    return not _TOXIC_PHRASES.search(text)
 
 
 async def verify_user(request: Request) -> dict:
@@ -39,6 +100,45 @@ llm = ChatGoogleGenerativeAI(
     timeout=15,
     max_retries=2,
 )
+
+_sentiment_llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
+    google_api_key=GOOGLE_API_KEY,
+    max_tokens=256,
+    timeout=10,
+    max_retries=1,
+)
+
+_SENTIMENT_PROMPT = (
+    "You are a child-psychology tone classifier. Given a student's message and the assistant's reply, "
+    "output ONLY a JSON object with exactly two keys:\n"
+    '  "frustration_score": a float from 0.0 (calm) to 1.0 (very frustrated),\n'
+    '  "suggested_action": one of "continue", "simplify", or "offer_break".\n'
+    "Rules:\n"
+    '- If frustration_score > 0.7, suggested_action MUST be "offer_break".\n'
+    '- If frustration_score > 0.4, suggested_action SHOULD be "simplify".\n'
+    '- Otherwise use "continue".\n'
+    "Output raw JSON only. No markdown, no explanation."
+)
+
+_DEFAULT_SENTIMENT = TurnSentiment(frustration_score=0.0, suggested_action="continue")
+
+
+def _score_sentiment(user_text: str, bot_reply: str) -> TurnSentiment:
+    try:
+        prompt = (
+            f"{_SENTIMENT_PROMPT}\n\n"
+            f"Student message: {user_text[:500]}\n"
+            f"Assistant reply: {bot_reply[:500]}"
+        )
+        result = _sentiment_llm.invoke([HumanMessage(content=prompt)])
+        raw = result.content.strip()
+        raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        parsed = json.loads(raw)
+        return TurnSentiment(**parsed)
+    except Exception:
+        return _DEFAULT_SENTIMENT
+
 
 _session_cache: TTLCache[str, ConversationChain] = TTLCache(maxsize=256, ttl=3600)
 _cache_lock = threading.Lock()
@@ -168,14 +268,30 @@ async def chatbot(
     reading_difficulty: str | None = Body(None),
     _user: dict = Depends(verify_user),
 ):
+    input_safe, sanitized_text = _validate_input(text)
+    if not input_safe:
+        return {
+            "response": SAFE_FALLBACK,
+            "sentiment": _DEFAULT_SENTIMENT.model_dump(),
+        }
+
     context_docs = await run_in_threadpool(
-        retrieve, text, 4, grade_level, reading_difficulty,
+        retrieve, sanitized_text, 4, grade_level, reading_difficulty,
     )
     context = "\n\n".join(doc.page_content for doc in context_docs) if context_docs else ""
-    prompt = f"Context:\n{context}\n\nQuestion: {text}" if context else text
+    prompt = f"Context:\n{context}\n\nQuestion: {sanitized_text}" if context else sanitized_text
     chain = _get_chain(session_id)
     response = await run_in_threadpool(chain.predict, input=prompt)
-    return {"response": response}
+
+    if not _validate_output(response):
+        return {
+            "response": SAFE_FALLBACK,
+            "sentiment": _DEFAULT_SENTIMENT.model_dump(),
+        }
+
+    clean_response = _sanitize_pii(response)
+    sentiment = await run_in_threadpool(_score_sentiment, sanitized_text, clean_response)
+    return {"response": clean_response, "sentiment": sentiment.model_dump()}
 
 
 from starlette.middleware.cors import CORSMiddleware

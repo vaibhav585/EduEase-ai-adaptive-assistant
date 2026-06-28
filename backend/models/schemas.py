@@ -51,3 +51,11 @@ class SessionTelemetryLog(BaseModel):
     session_id: str
     average_focus_score: float = Field(ge=0.0, le=1.0)
     frustration_triggers: int = Field(ge=0)
+
+
+class CreateUserRequest(BaseModel):
+    email: str
+    password: str = Field(min_length=6)
+    role: Literal["student", "teacher"]
+    grade_level: Optional[str] = None
+    teacher_id: Optional[str] = None

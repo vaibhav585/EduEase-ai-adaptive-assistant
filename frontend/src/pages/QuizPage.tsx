@@ -7,6 +7,7 @@ interface Question {
   options: string[];
   answer: string;
   topic?: string;
+  question_type?: "fill_blank" | "true_false" | "mcq";
 }
 
 const QuizPage: React.FC = () => {
@@ -17,19 +18,20 @@ const QuizPage: React.FC = () => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [typedAnswer, setTypedAnswer] = useState("");
   const [score, setScore] = useState(0);
   const [isQuizCompleted, setIsQuizCompleted] = useState(false);
   const [wrongTopics, setWrongTopics] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const TOTAL_QUESTIONS = 10;
+  const MAX_QUESTIONS = 10;
 
   useEffect(() => {
     if (text) {
       api
         .post("/generate-quiz/", { text })
         .then((res) => {
-          const data = res.data.questions.slice(0, TOTAL_QUESTIONS);
+          const data = res.data.questions.slice(0, MAX_QUESTIONS);
           setQuestions(data);
         })
         .catch((err) => console.error("Error fetching quiz:", err))
@@ -37,29 +39,45 @@ const QuizPage: React.FC = () => {
     }
   }, [text]);
 
+  const totalQuestions = questions.length;
+
+  const getCurrentAnswer = (): string | null => {
+    const q = questions[currentIndex];
+    if (!q) return null;
+    if (q.question_type === "fill_blank") return typedAnswer.trim() || null;
+    return selectedAnswer;
+  };
+
   const handleSubmit = () => {
-    if (!selectedAnswer) return;
+    const userAnswer = getCurrentAnswer();
+    if (!userAnswer) return;
 
     const currentQuestion = questions[currentIndex];
-    const isCorrect = selectedAnswer === currentQuestion.answer;
+    const isCorrect =
+      currentQuestion.question_type === "fill_blank"
+        ? userAnswer.toLowerCase() === currentQuestion.answer.toLowerCase()
+        : userAnswer === currentQuestion.answer;
+
+    const topicLabel = currentQuestion.topic || currentQuestion.answer;
 
     if (isCorrect) {
       setScore((prev) => prev + 1);
     } else {
-      setWrongTopics((prev) => [...prev, currentQuestion.answer]);
+      setWrongTopics((prev) => [...prev, topicLabel]);
     }
 
-    const isFinal = currentIndex >= TOTAL_QUESTIONS - 1;
+    const isFinal = currentIndex >= totalQuestions - 1;
     if (!isFinal) {
       setCurrentIndex((prev) => prev + 1);
       setSelectedAnswer(null);
+      setTypedAnswer("");
     } else {
       const finalScore = score + (isCorrect ? 1 : 0);
-      const finalWrong = isCorrect ? wrongTopics : [...wrongTopics, currentQuestion.answer];
+      const finalWrong = isCorrect ? wrongTopics : [...wrongTopics, topicLabel];
       setIsQuizCompleted(true);
       api.post("/analytics/log-quiz/", {
         score: finalScore,
-        total_questions: Math.min(questions.length, TOTAL_QUESTIONS),
+        total_questions: totalQuestions,
         wrong_topics: [...new Set(finalWrong)],
       }).catch(() => {});
     }
@@ -69,6 +87,8 @@ const QuizPage: React.FC = () => {
     setCurrentIndex(0);
     setScore(0);
     setWrongTopics([]);
+    setSelectedAnswer(null);
+    setTypedAnswer("");
     setIsQuizCompleted(false);
   };
 
@@ -84,14 +104,14 @@ const QuizPage: React.FC = () => {
     const uniqueWeakAreas = [...new Set(wrongTopics)];
     return (
       <div className="mx-auto max-w-2xl bg-white rounded-2xl shadow-md p-8 border border-slate-100">
-        <h2 className="text-3xl font-semibold text-indigo-800 mb-2 text-center">🎉 Quiz Completed!</h2>
+        <h2 className="text-3xl font-semibold text-indigo-800 mb-2 text-center">Quiz Completed!</h2>
         <p className="text-lg text-slate-700 text-center mb-6">
-          Your Score: <b>{score}/{TOTAL_QUESTIONS}</b>
+          Your Score: <b>{score}/{totalQuestions}</b>
         </p>
 
         {uniqueWeakAreas.length > 0 ? (
           <div className="bg-indigo-50 rounded-xl p-5 border border-indigo-100">
-            <h3 className="text-lg font-semibold text-slate-800 mb-2">🧩 Focus Areas to Improve</h3>
+            <h3 className="text-lg font-semibold text-slate-800 mb-2">Focus Areas to Improve</h3>
             <ul className="list-disc ml-6 text-slate-700">
               {uniqueWeakAreas.map((topic, i) => <li key={i}>{topic}</li>)}
             </ul>
@@ -103,16 +123,12 @@ const QuizPage: React.FC = () => {
         )}
 
         <div className="flex justify-center gap-3 mt-6">
-          <button
-            onClick={handleRestart}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-semibold"
-          >
+          <button onClick={handleRestart}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-semibold">
             Retry Quiz
           </button>
-          <button
-            onClick={() => navigate("/student-dashboard")}
-            className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg font-semibold"
-          >
+          <button onClick={() => navigate("/student-dashboard")}
+            className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg font-semibold">
             Go to Dashboard
           </button>
         </div>
@@ -120,56 +136,83 @@ const QuizPage: React.FC = () => {
     );
   }
 
+  if (totalQuestions === 0) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center text-lg text-slate-600">
+        No questions could be generated from this text. Try uploading a longer passage.
+      </div>
+    );
+  }
+
   const currentQuestion = questions[currentIndex];
-  const progress = Math.round(((currentIndex + 1) / TOTAL_QUESTIONS) * 100);
+  const progress = Math.round(((currentIndex + 1) / totalQuestions) * 100);
+
+  if (!currentQuestion || !currentQuestion.options) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center text-lg text-slate-600">
+        Error loading question {currentIndex + 1}. Please restart the quiz.
+      </div>
+    );
+  }
+
+  const qType = currentQuestion.question_type || "fill_blank";
+  const typeLabel = qType === "mcq" ? "Multiple Choice" : qType === "true_false" ? "True or False" : "Fill in the Blank";
+  const hasAnswer = qType === "fill_blank" ? typedAnswer.trim().length > 0 : !!selectedAnswer;
 
   return (
     <div className="mx-auto max-w-3xl bg-white rounded-2xl shadow-md p-8 border border-slate-100">
-      <h2 className="text-2xl font-semibold text-indigo-800 mb-1 text-center">🧠 Quiz Time!</h2>
-      <p className="text-slate-600 text-center mb-4">
-        Question {currentIndex + 1} of {TOTAL_QUESTIONS}
+      <h2 className="text-2xl font-semibold text-indigo-800 mb-1 text-center">Quiz Time!</h2>
+      <p className="text-slate-600 text-center mb-1">
+        Question {currentIndex + 1} of {totalQuestions}
       </p>
+      <p className="text-xs text-slate-400 text-center mb-4">{typeLabel}</p>
 
-      {/* Progress bar */}
       <div className="w-full h-2 rounded-full bg-slate-200/70 overflow-hidden mb-6">
-        <div
-          className="h-2 bg-indigo-500 transition-all"
-          style={{ width: `${progress}%` }}
-        />
+        <div className="h-2 bg-indigo-500 transition-all" style={{ width: `${progress}%` }} />
       </div>
 
       <h3 className="text-xl font-semibold mb-5 text-center text-slate-800">
-        {currentQuestion?.question}
+        {currentQuestion.question}
       </h3>
 
-      <div className="flex flex-col gap-3">
-        {currentQuestion?.options.map((option, index) => (
-          <label
-            key={index}
-            className={`p-3 border rounded-xl cursor-pointer transition
-              ${selectedAnswer === option ? "bg-indigo-50 border-indigo-300" : "hover:bg-slate-50 border-slate-200"}`}
-          >
-            <input
-              type="radio"
-              name="quiz"
-              value={option}
-              checked={selectedAnswer === option}
-              onChange={() => setSelectedAnswer(option)}
-              className="mr-2"
-            />
-            {option}
-          </label>
-        ))}
-      </div>
+      {/* True/False and MCQ: radio options */}
+      {(qType === "true_false" || qType === "mcq") && (
+        <div className="flex flex-col gap-3">
+          {currentQuestion.options.map((option, index) => (
+            <label key={index}
+              className={`p-3 border rounded-xl cursor-pointer transition
+                ${selectedAnswer === option ? "bg-indigo-50 border-indigo-300" : "hover:bg-slate-50 border-slate-200"}`}>
+              <input type="radio" name="quiz" value={option}
+                checked={selectedAnswer === option}
+                onChange={() => setSelectedAnswer(option)}
+                className="mr-2" />
+              {option}
+            </label>
+          ))}
+        </div>
+      )}
+
+      {/* Fill-in-the-blank: text input */}
+      {qType === "fill_blank" && (
+        <div className="flex flex-col items-center gap-3">
+          <input
+            type="text"
+            value={typedAnswer}
+            onChange={(e) => setTypedAnswer(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && hasAnswer) handleSubmit(); }}
+            placeholder="Type your answer..."
+            className="w-full max-w-md border border-slate-200 rounded-xl p-3 text-center text-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            autoFocus
+          />
+          <p className="text-xs text-slate-400">Hint: the missing word is a noun, verb, or adjective</p>
+        </div>
+      )}
 
       <div className="flex justify-center mt-6">
-        <button
-          onClick={handleSubmit}
-          disabled={!selectedAnswer}
+        <button onClick={handleSubmit} disabled={!hasAnswer}
           className={`px-6 py-2 font-semibold rounded-lg
-            ${selectedAnswer ? "bg-emerald-500 hover:bg-emerald-600 text-white" : "bg-slate-300 text-slate-600 cursor-not-allowed"}`}
-        >
-          {currentIndex === TOTAL_QUESTIONS - 1 ? "Finish" : "Next"}
+            ${hasAnswer ? "bg-emerald-500 hover:bg-emerald-600 text-white" : "bg-slate-300 text-slate-600 cursor-not-allowed"}`}>
+          {currentIndex === totalQuestions - 1 ? "Finish" : "Next"}
         </button>
       </div>
     </div>

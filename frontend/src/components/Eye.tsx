@@ -27,6 +27,8 @@ const CALIBRATION_POINTS = [
 ];
 
 const CLICKS_PER_POINT = 5;
+const FOCUS_LOST_MS = 4000;
+const CALIBRATION_KEY = "eduease_calibrated_matrix";
 
 const Eye: React.FC<Props> = ({ targetId, onFocusChange, sentiment }) => {
   const [status, setStatus] = useState<
@@ -37,7 +39,10 @@ const Eye: React.FC<Props> = ({ targetId, onFocusChange, sentiment }) => {
   const [clickCount, setClickCount] = useState(0);
   const [focused, setFocused] = useState(true);
   const focusedRef = useRef(true);
+  const onFocusChangeRef = useRef(onFocusChange);
+  onFocusChangeRef.current = onFocusChange;
   const lastDataTimeRef = useRef(Date.now());
+  const unfocusedSinceRef = useRef<number | null>(null);
   const gazeCountRef = useRef(0);
   const [showBanner, setShowBanner] = useState(false);
   const [bannerMessage, setBannerMessage] = useState("");
@@ -87,28 +92,68 @@ const Eye: React.FC<Props> = ({ targetId, onFocusChange, sentiment }) => {
     let mounted = true;
 
     const init = async () => {
+      const hasCachedCalibration = !!localStorage.getItem(CALIBRATION_KEY);
+
       try {
-        wg.clearData();
+        if (wg.params) {
+          wg.params.facemeshWasmBasePath = "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/";
+        }
+        try {
+          const FaceMesh = await import("@mediapipe/tasks-vision");
+          if (FaceMesh && wg.params) {
+            wg.params.facemeshWasmBasePath = "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/";
+          }
+        } catch {
+          // @mediapipe/tasks-vision not bundled — CDN path already set above
+        }
+
+        if (!hasCachedCalibration) wg.clearData();
         wg.setRegression("ridge")
           .showVideoPreview(false)
           .showFaceOverlay(false)
           .showPredictionPoints(false)
           .setGazeListener((data: any) => {
-            if (data && data.x != null && data.y != null) {
-              // Every time we get valid gaze data, the user's face is detected
+            const isInsideViewport = (
+              data &&
+              data.x != null && data.y != null &&
+              data.x >= -150 &&
+              data.x <= window.innerWidth + 150 &&
+              data.y >= -150 &&
+              data.y <= window.innerHeight + 150
+            );
+            if (isInsideViewport) {
               lastDataTimeRef.current = Date.now();
               gazeCountRef.current++;
+              unfocusedSinceRef.current = null;
+              focusedRef.current = true;
+              requestAnimationFrame(() => {
+                setFocused(true);
+                if (onFocusChangeRef.current) onFocusChangeRef.current(true);
+              });
             }
           });
 
         await wg.begin();
-        if (mounted) setStatus("ready");
+        if (mounted) {
+          if (hasCachedCalibration) {
+            lastDataTimeRef.current = Date.now();
+            focusedRef.current = true;
+            setFocused(true);
+            setStatus("tracking");
+          } else {
+            setStatus("ready");
+          }
+        }
       } catch (err) {
         console.warn("WebGazer .begin() error:", err);
         setTimeout(() => {
           if (!mounted) return;
-          // Assume it's working if we got this far
-          setStatus("ready");
+          if (hasCachedCalibration) {
+            lastDataTimeRef.current = Date.now();
+            setStatus("tracking");
+          } else {
+            setStatus("ready");
+          }
         }, 2000);
       }
 
@@ -135,27 +180,36 @@ const Eye: React.FC<Props> = ({ targetId, onFocusChange, sentiment }) => {
     };
   }, []);
 
-  // ───── Focus detection (face-presence based) ─────
-  // If webgazer sends gaze data → face detected → focused
-  // If no gaze data for >1.5 seconds → face lost → distracted
   useEffect(() => {
     if (status !== "tracking") return;
 
     const interval = setInterval(() => {
-      const timeSinceLastData = Date.now() - lastDataTimeRef.current;
+      const now = Date.now();
+      const timeSinceLastData = now - lastDataTimeRef.current;
+      const gazePresent = timeSinceLastData < 2000;
 
-      // If no gaze data received for 1.5 seconds → user looked away
-      const isFocusedNow = timeSinceLastData < 1500;
-
-      if (isFocusedNow !== focusedRef.current) {
-        focusedRef.current = isFocusedNow;
-        setFocused(isFocusedNow);
-        onFocusChange?.(isFocusedNow);
+      if (gazePresent) {
+        unfocusedSinceRef.current = null;
+        if (!focusedRef.current) {
+          focusedRef.current = true;
+          setFocused(true);
+          onFocusChangeRef.current?.(true);
+        }
+      } else {
+        if (unfocusedSinceRef.current === null) {
+          unfocusedSinceRef.current = now;
+        }
+        const driftDuration = now - unfocusedSinceRef.current;
+        if (driftDuration >= FOCUS_LOST_MS && focusedRef.current) {
+          focusedRef.current = false;
+          setFocused(false);
+          onFocusChangeRef.current?.(false);
+        }
       }
     }, 500);
 
     return () => clearInterval(interval);
-  }, [status, onFocusChange]);
+  }, [status]);
 
   // ───── Handle calibration dot click ─────
   const handleCalibrationClick = useCallback(() => {
@@ -175,8 +229,9 @@ const Eye: React.FC<Props> = ({ targetId, onFocusChange, sentiment }) => {
     if (newCount >= CLICKS_PER_POINT) {
       const nextIndex = calPointIndex + 1;
       if (nextIndex >= CALIBRATION_POINTS.length) {
-        // Calibration done — reset timing and start tracking
+        localStorage.setItem(CALIBRATION_KEY, JSON.stringify({ ts: Date.now() }));
         lastDataTimeRef.current = Date.now();
+        unfocusedSinceRef.current = null;
         focusedRef.current = true;
         setFocused(true);
         setStatus("tracking");
@@ -188,9 +243,13 @@ const Eye: React.FC<Props> = ({ targetId, onFocusChange, sentiment }) => {
   }, [calPointIndex, clickCount]);
 
   const startCalibration = () => {
+    localStorage.removeItem(CALIBRATION_KEY);
+    const wg = window.webgazer;
+    if (wg) try { wg.clearData(); } catch {}
     setCalPointIndex(0);
     setClickCount(0);
     gazeCountRef.current = 0;
+    unfocusedSinceRef.current = null;
     setStatus("calibrating");
   };
 

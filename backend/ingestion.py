@@ -15,7 +15,7 @@ from config import GOOGLE_API_KEY
 FAISS_INDEX_DIR = Path(__file__).parent / "data" / "faiss_index"
 
 _embeddings = GoogleGenerativeAIEmbeddings(
-    model="models/text-embedding-004",
+    model="gemini-embedding-001",
     google_api_key=GOOGLE_API_KEY,
 )
 

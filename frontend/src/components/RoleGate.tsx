@@ -28,7 +28,9 @@ export default function RoleGate({ children, expectedRole }: { children: React.R
 
         // Only redirect if the fetched role doesn't match what this route expects
         if (fetchedRole !== expectedRole) {
-          if (fetchedRole === 'teacher') {
+          if (fetchedRole === 'admin') {
+            navigate('/admin-dashboard');
+          } else if (fetchedRole === 'teacher') {
             navigate('/teacher-dashboard');
           } else {
             navigate('/student-dashboard');

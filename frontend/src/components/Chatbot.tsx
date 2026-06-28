@@ -41,20 +41,20 @@ const Chatbot: React.FC<ChatbotProps> = ({ onSentiment, gradeLevel, readingDiffi
 
     try {
       const response = await api.post('/chatbot/', {
-        text: input,
+        text: userMessage.text,
         session_id: sessionId,
         grade_level: gradeLevel ?? null,
         reading_difficulty: readingDifficulty ?? null,
       });
-      const botMessage: Message = { text: response.data.response, sender: 'bot' };
-      setMessages((prevMessages) => [...prevMessages, botMessage]);
-      if (response.data.sentiment && onSentiment) {
+      const reply = response.data?.response || response.data?.reply || "I'm not sure how to respond to that.";
+      const botMessage: Message = { text: reply, sender: 'bot' };
+      setMessages((prev) => [...prev, botMessage]);
+      if (response.data?.sentiment && onSentiment) {
         onSentiment(response.data.sentiment);
       }
-    } catch (error) {
-      console.error('Error communicating with chatbot:', error);
-      const errorMessage: Message = { text: 'Sorry, I am having trouble connecting right now.', sender: 'bot' };
-      setMessages((prevMessages) => [...prevMessages, errorMessage]);
+    } catch (error: any) {
+      const fallback = error?.response?.data?.detail || 'Sorry, I am having trouble connecting right now.';
+      setMessages((prev) => [...prev, { text: fallback, sender: 'bot' }]);
     } finally {
       setLoading(false);
     }

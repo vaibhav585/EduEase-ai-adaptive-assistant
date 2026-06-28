@@ -1,9 +1,9 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import TeacherDashboardPage from './pages/TeacherDashboardPage';
+import AdminDashboardPage from './pages/AdminDashboardPage';
 import UploadPage from './pages/UploadPage';
 import LearningPage from './pages/LearningPage';
 import ContentPage from './pages/ContentPage';
@@ -17,23 +17,24 @@ const App: React.FC = () => {
       <Layout>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
           <Route path="/" element={<LoginPage />} />
 
-          {/* Protected routes */}
+          {/* Admin */}
+          <Route
+            path="/admin-dashboard"
+            element={
+              <RoleGate expectedRole="admin">
+                <AdminDashboardPage />
+              </RoleGate>
+            }
+          />
+
+          {/* Student */}
           <Route
             path="/student-dashboard"
             element={
               <RoleGate expectedRole="student">
                 <DashboardPage />
-              </RoleGate>
-            }
-          />
-          <Route
-            path="/teacher-dashboard"
-            element={
-              <RoleGate expectedRole="teacher">
-                <TeacherDashboardPage />
               </RoleGate>
             }
           />
@@ -66,6 +67,16 @@ const App: React.FC = () => {
             element={
               <RoleGate expectedRole="student">
                 <QuizPage />
+              </RoleGate>
+            }
+          />
+
+          {/* Teacher */}
+          <Route
+            path="/teacher-dashboard"
+            element={
+              <RoleGate expectedRole="teacher">
+                <TeacherDashboardPage />
               </RoleGate>
             }
           />

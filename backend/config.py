@@ -1,10 +1,14 @@
 import os
+from dotenv import load_dotenv
+
+# Force load variables from the local .env file
+load_dotenv()
 
 try:
     GOOGLE_API_KEY: str = os.environ["GOOGLE_API_KEY"]
 except KeyError as exc:
     raise RuntimeError(
-        "GOOGLE_API_KEY is required. Set it in the environment before starting the backend."
+        "GOOGLE_API_KEY is required. Please check that your backend/.env file contains this key."
     ) from exc
 
 # Translation settings

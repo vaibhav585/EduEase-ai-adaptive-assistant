@@ -19,10 +19,113 @@ import threading
 from starlette.concurrency import run_in_threadpool
 from ingestion import ingest, retrieve
 from datetime import datetime, timezone
-from models.schemas import TurnSentiment, ChatbotResponse, QuizResultLog, SessionTelemetryLog
+from models.schemas import TurnSentiment, ChatbotResponse, QuizResultLog, SessionTelemetryLog, CreateUserRequest
 
 app = FastAPI()
 nlp = spacy.load("en_core_web_sm")
+
+ADMIN_EMAIL = "admin@test.com"
+ADMIN_PASSWORD = "admin@123"
+
+
+def _ensure_user(email: str, password: str, profile: dict) -> str:
+    try:
+        existing = firebase_auth.get_user_by_email(email)
+        uid = existing.uid
+    except Exception:
+        new_user = firebase_auth.create_user(email=email, password=password)
+        uid = new_user.uid
+    doc = db.collection("users").document(uid).get()
+    if not doc.exists or doc.to_dict().get("role") != profile.get("role"):
+        db.collection("users").document(uid).set(profile, merge=True)
+    return uid
+
+
+def _delete_collection(col_name: str):
+    batch_size = 50
+    while True:
+        docs = list(db.collection(col_name).limit(batch_size).stream())
+        if not docs:
+            break
+        batch = db.batch()
+        for d in docs:
+            batch.delete(d.reference)
+        batch.commit()
+
+
+def _seed_demo_data():
+    try:
+        admin_uid = _ensure_user(ADMIN_EMAIL, ADMIN_PASSWORD, {"email": ADMIN_EMAIL, "role": "admin"})
+
+        teacher_uids = []
+        for i in range(1, 4):
+            email = f"teacher{i}@test.com"
+            uid = _ensure_user(email, "teacher@123", {"email": email, "role": "teacher"})
+            teacher_uids.append(uid)
+
+        student_map: list[tuple[str, str]] = []
+        for i in range(1, 11):
+            email = f"student{i}@test.com"
+            teacher_uid = teacher_uids[(i - 1) % len(teacher_uids)]
+            grade = str(((i - 1) % 8) + 1)
+            uid = _ensure_user(email, "student@123", {
+                "email": email,
+                "role": "student",
+                "grade_level": grade,
+                "teacher_id": teacher_uid,
+            })
+            student_map.append((uid, teacher_uid))
+
+        existing = list(db.collection("quiz_results").limit(1).stream())
+        if existing:
+            print("[SEED] Clearing stale demo data...")
+            _delete_collection("quiz_results")
+            _delete_collection("telemetry_sessions")
+
+        topics_pool = [
+            "Cell Biology", "Photosynthesis Process", "Chemical Bonding",
+            "Solar System Structure", "Water Cycle Mechanics", "Gravity & Motion",
+            "Plant Anatomy", "Ecosystem Dynamics", "Light & Optics",
+            "Human Anatomy", "Computer Memory Architecture",
+            "Object-Oriented Programming", "Control Flow Structures",
+        ]
+        now = datetime.now(timezone.utc)
+        for sid, tid in student_map:
+            for q in range(5):
+                score = random.randint(4, 10)
+                wrong = random.sample(topics_pool, k=random.randint(0, 3))
+                ts = now.replace(hour=10 + q, minute=0, second=0, microsecond=0)
+                ts = ts.replace(day=max(1, ts.day - (4 - q)))
+                db.collection("quiz_results").add({
+                    "student_id": sid,
+                    "teacher_id": tid,
+                    "score": score,
+                    "total_questions": 10,
+                    "wrong_topics": wrong,
+                    "timestamp": ts.isoformat(),
+                })
+
+            for s in range(5):
+                focus = round(0.5 + random.random() * 0.45, 2)
+                triggers = random.randint(0, 4)
+                ts = now.replace(hour=9 + s, minute=30, second=0, microsecond=0)
+                ts = ts.replace(day=max(1, ts.day - (4 - s)))
+                db.collection("telemetry_sessions").add({
+                    "student_id": sid,
+                    "teacher_id": tid,
+                    "session_id": f"seed-{sid[:6]}-{s}",
+                    "average_focus_score": focus,
+                    "frustration_triggers": triggers,
+                    "timestamp": ts.isoformat(),
+                })
+
+        print(f"[SEED] Seeded {len(student_map)} students, {len(teacher_uids)} teachers, 50 quiz + 50 session records")
+
+    except Exception as e:
+        print(f"[WARN] Seed skipped: {e}")
+
+
+_seed_demo_data()
 
 SAFE_FALLBACK = (
     "Let's focus on our reading material together! "
@@ -328,40 +431,75 @@ async def get_content(_user: dict = Depends(verify_user)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+_QUIZ_SYSTEM_PROMPT = (
+    "You are an educational quiz generator. Given a passage of text, generate quiz questions.\n"
+    "Output ONLY a valid JSON array. No markdown, no explanation.\n"
+    "Each element MUST have exactly these keys:\n"
+    '  "question": the question string\n'
+    '  "options": array of 4 answer choices (for fill_blank and mcq) or ["True","False"] for true_false\n'
+    '  "answer": the correct option string (must match one element in options exactly)\n'
+    '  "question_type": one of "fill_blank", "true_false", "mcq"\n'
+    '  "topic": a broad educational domain header (2-5 words) like "Cell Biology", '
+    '"Computer Memory Architecture", "Photosynthesis Process", "Gravity & Motion". '
+    "NEVER quote raw words from the text. Always use a standardized academic category name.\n\n"
+    "Generate a balanced mix of all three question types.\n"
+    "Generate at most 10 questions.\n"
+)
+
+
+def _generate_quiz_via_llm(text: str) -> list[dict]:
+    prompt = f"{_QUIZ_SYSTEM_PROMPT}\nPassage:\n{text[:3000]}"
+    result = llm.invoke([HumanMessage(content=prompt)])
+    raw = result.content.strip()
+    raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    questions = json.loads(raw)
+    if not isinstance(questions, list):
+        return []
+    valid = []
+    for q in questions:
+        if all(k in q for k in ("question", "options", "answer", "question_type", "topic")):
+            if isinstance(q["options"], list) and q["answer"] in q["options"]:
+                valid.append(q)
+    return valid
+
+
+def _generate_quiz_spacy_fallback(text: str) -> list[dict]:
+    doc = nlp(text)
+    questions: list[dict] = []
+    all_words = [t.text for t in doc if t.pos_ in ("NOUN", "VERB", "ADJ")]
+    for i, sent in enumerate(s for s in doc.sents if len(s.text.split()) > 5):
+        blanks = [t.text for t in sent if t.pos_ in ("NOUN", "VERB", "ADJ")]
+        if not blanks:
+            continue
+        blank = random.choice(blanks)
+        question_text = sent.text.replace(blank, "______")
+        options = [blank]
+        distractors = [w for w in all_words if w != blank]
+        random.shuffle(distractors)
+        for _ in range(3):
+            options.append(distractors.pop() if distractors else f"Option {len(options)}")
+        random.shuffle(options)
+        chunks = [c.text.title() for c in nlp(sent.text).noun_chunks if len(c.text.split()) >= 2]
+        topic = chunks[0] if chunks else "General Knowledge"
+        questions.append({
+            "question": question_text, "options": options, "answer": blank,
+            "question_type": "fill_blank", "topic": topic,
+        })
+    return questions
+
+
 @app.post("/generate-quiz/")
 async def generate_quiz(text: str = Body(..., embed=True), _user: dict = Depends(verify_user)):
     try:
-        doc = nlp(text)
+        questions = await run_in_threadpool(_generate_quiz_via_llm, text)
+    except Exception:
         questions = []
-        
-        # Collect all relevant words from the document for better distractors
-        all_relevant_words = [token.text for token in doc if token.pos_ in ["NOUN", "VERB", "ADJ"]]
-        
-        for sent in doc.sents:
-            if len(sent.text.split()) > 5:
-                blanks = [token.text for token in sent if token.pos_ in ["NOUN", "VERB", "ADJ"]]
-                if len(blanks) > 0:
-                    blank = random.choice(blanks)
-                    question = sent.text.replace(blank, "______")
-                    options = [blank]
-                    
-                    # Generate distractors from all_relevant_words
-                    # Ensure distractors are not the blank and are unique
-                    potential_distractors = [word for word in all_relevant_words if word != blank]
-                    random.shuffle(potential_distractors)
-                    
-                    for _ in range(3):
-                        if potential_distractors:
-                            options.append(potential_distractors.pop())
-                        else:
-                            # Fallback if not enough relevant words
-                            options.append(f"Option {len(options)}") 
-                            
-                    random.shuffle(options)
-                    questions.append({"question": question, "options": options, "answer": blank})
-        return {"questions": questions}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error generating quiz: {e}")
+    if not questions:
+        try:
+            questions = _generate_quiz_spacy_fallback(text)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error generating quiz: {e}")
+    return {"questions": questions}
 
 @app.post("/chatbot/", response_model=ChatbotResponse)
 async def chatbot(
@@ -378,13 +516,24 @@ async def chatbot(
             sentiment=_DEFAULT_SENTIMENT,
         )
 
-    context_docs = await run_in_threadpool(
-        retrieve, sanitized_text, 4, grade_level, reading_difficulty,
-    )
+    try:
+        context_docs = await run_in_threadpool(
+            retrieve, sanitized_text, 4, grade_level, reading_difficulty,
+        )
+    except Exception:
+        context_docs = []
+
     context = "\n\n".join(doc.page_content for doc in context_docs) if context_docs else ""
     prompt = f"Context:\n{context}\n\nQuestion: {sanitized_text}" if context else sanitized_text
-    chain = _get_chain(session_id)
-    llm_response = await run_in_threadpool(chain.predict, input=prompt)
+
+    try:
+        chain = _get_chain(session_id)
+        llm_response = await run_in_threadpool(chain.predict, input=prompt)
+    except Exception:
+        return ChatbotResponse(
+            response=SAFE_FALLBACK,
+            sentiment=_DEFAULT_SENTIMENT,
+        )
 
     if not _validate_output(llm_response):
         return ChatbotResponse(
@@ -397,17 +546,31 @@ async def chatbot(
     return ChatbotResponse(response=clean_response, sentiment=sentiment)
 
 
+def _get_teacher_id(student_uid: str) -> str | None:
+    try:
+        snap = db.collection("users").document(student_uid).get()
+        if snap.exists:
+            return snap.to_dict().get("teacher_id")
+    except Exception:
+        pass
+    return None
+
+
 @app.post("/analytics/log-quiz/")
 async def log_quiz(payload: QuizResultLog, _user: dict = Depends(verify_user)):
     uid = _user.get("uid", "")
+    teacher_id = await run_in_threadpool(_get_teacher_id, uid)
     try:
-        db.collection("quiz_results").add({
+        entry: dict = {
             "student_id": uid,
             "score": payload.score,
             "total_questions": payload.total_questions,
             "wrong_topics": payload.wrong_topics,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        }
+        if teacher_id:
+            entry["teacher_id"] = teacher_id
+        db.collection("quiz_results").add(entry)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"status": "logged"}
@@ -416,23 +579,70 @@ async def log_quiz(payload: QuizResultLog, _user: dict = Depends(verify_user)):
 @app.post("/analytics/log-session/")
 async def log_session(payload: SessionTelemetryLog, _user: dict = Depends(verify_user)):
     uid = _user.get("uid", "")
+    teacher_id = await run_in_threadpool(_get_teacher_id, uid)
     try:
-        db.collection("telemetry_sessions").add({
+        entry: dict = {
             "student_id": uid,
             "session_id": payload.session_id,
             "average_focus_score": payload.average_focus_score,
             "frustration_triggers": payload.frustration_triggers,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        }
+        if teacher_id:
+            entry["teacher_id"] = teacher_id
+        db.collection("telemetry_sessions").add(entry)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"status": "logged"}
 
 
+@app.post("/admin/create-user")
+async def admin_create_user(payload: CreateUserRequest, _user: dict = Depends(verify_role("admin"))):
+    try:
+        new_user = firebase_auth.create_user(email=payload.email, password=payload.password)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Firebase user creation failed: {e}")
+    try:
+        user_data: dict = {"email": payload.email, "role": payload.role}
+        if payload.grade_level:
+            user_data["grade_level"] = payload.grade_level
+        if payload.teacher_id:
+            user_data["teacher_id"] = payload.teacher_id
+        db.collection("users").document(new_user.uid).set(user_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Firestore profile write failed: {e}")
+    return {"uid": new_user.uid, "email": payload.email, "role": payload.role}
+
+
+@app.get("/admin/users")
+async def admin_list_users(_user: dict = Depends(verify_role("admin"))):
+    try:
+        docs = db.collection("users").stream()
+        users = []
+        for d in docs:
+            data = d.to_dict()
+            users.append({
+                "uid": d.id,
+                "email": data.get("email", ""),
+                "role": data.get("role", ""),
+                "grade_level": data.get("grade_level"),
+                "teacher_id": data.get("teacher_id"),
+            })
+        return {"users": users}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/teacher/students")
 async def get_students(_user: dict = Depends(verify_role("teacher"))):
+    teacher_uid = _user.get("uid", "")
     try:
-        docs = db.collection("users").where("role", "==", "student").stream()
+        docs = (
+            db.collection("users")
+            .where("role", "==", "student")
+            .where("teacher_id", "==", teacher_uid)
+            .stream()
+        )
         students = []
         for d in docs:
             data = d.to_dict()
@@ -440,7 +650,6 @@ async def get_students(_user: dict = Depends(verify_role("teacher"))):
                 "uid": d.id,
                 "email": data.get("email", ""),
                 "grade_level": data.get("grade_level"),
-                "reading_difficulty": data.get("reading_difficulty"),
             })
         return {"students": students}
     except Exception as e:
@@ -449,46 +658,64 @@ async def get_students(_user: dict = Depends(verify_role("teacher"))):
 
 @app.get("/teacher/analytics/{student_id}")
 async def get_student_analytics(student_id: str, _user: dict = Depends(verify_role("teacher"))):
+    import traceback
     try:
         quiz_docs = (
             db.collection("quiz_results")
             .where("student_id", "==", student_id)
-            .order_by("timestamp")
             .stream()
         )
         quizzes = []
         all_wrong: list[str] = []
         for d in quiz_docs:
             data = d.to_dict()
+            score = data.get("score", 0)
+            total = data.get("total_questions", 0)
+            wrong = data.get("wrong_topics") or []
+            ts = data.get("timestamp", "")
+            if not isinstance(score, (int, float)):
+                score = 0
+            if not isinstance(total, (int, float)):
+                total = 0
             quizzes.append({
-                "score": data.get("score", 0),
-                "total_questions": data.get("total_questions", 0),
-                "wrong_topics": data.get("wrong_topics", []),
-                "timestamp": data.get("timestamp", ""),
+                "score": int(score),
+                "total_questions": int(total),
+                "wrong_topics": wrong if isinstance(wrong, list) else [],
+                "timestamp": str(ts),
             })
-            all_wrong.extend(data.get("wrong_topics", []))
+            if isinstance(wrong, list):
+                all_wrong.extend(wrong)
+        quizzes.sort(key=lambda q: q["timestamp"])
 
         session_docs = (
             db.collection("telemetry_sessions")
             .where("student_id", "==", student_id)
-            .order_by("timestamp")
             .stream()
         )
         sessions = []
         total_frustration = 0
         for d in session_docs:
             data = d.to_dict()
+            focus = data.get("average_focus_score", 0.0)
+            triggers = data.get("frustration_triggers", 0)
+            ts = data.get("timestamp", "")
+            if not isinstance(focus, (int, float)):
+                focus = 0.0
+            if not isinstance(triggers, (int, float)):
+                triggers = 0
             sessions.append({
-                "session_id": data.get("session_id", ""),
-                "average_focus_score": data.get("average_focus_score", 0.0),
-                "frustration_triggers": data.get("frustration_triggers", 0),
-                "timestamp": data.get("timestamp", ""),
+                "session_id": str(data.get("session_id", "")),
+                "average_focus_score": float(focus),
+                "frustration_triggers": int(triggers),
+                "timestamp": str(ts),
             })
-            total_frustration += data.get("frustration_triggers", 0)
+            total_frustration += int(triggers)
+        sessions.sort(key=lambda s: s["timestamp"])
 
         topic_counts: dict[str, int] = {}
         for t in all_wrong:
-            topic_counts[t] = topic_counts.get(t, 0) + 1
+            if isinstance(t, str) and t:
+                topic_counts[t] = topic_counts.get(t, 0) + 1
 
         return {
             "student_id": student_id,
@@ -498,6 +725,7 @@ async def get_student_analytics(student_id: str, _user: dict = Depends(verify_ro
             "total_frustration_triggers": total_frustration,
         }
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 

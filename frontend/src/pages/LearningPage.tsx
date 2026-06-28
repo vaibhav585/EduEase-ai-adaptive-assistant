@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../services/api';
 import Eye from '../components/Eye';
 
 const LearningPage: React.FC = () => {
@@ -19,7 +19,7 @@ const LearningPage: React.FC = () => {
 
   React.useEffect(() => {
     if (text) {
-      axios.post('http://localhost:8000/simplify-text/', { text })
+      api.post('/simplify-text/', { text })
         .then((response) => {
           const simplified = response.data.simplified_text;
           setSimplifiedText(simplified);

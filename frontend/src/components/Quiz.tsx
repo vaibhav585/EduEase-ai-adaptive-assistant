@@ -1,7 +1,7 @@
 
 import React from 'react';
-import axios from 'axios';
 import { useLocation } from 'react-router-dom';
+import api from '../services/api';
 
 const Quiz: React.FC = () => {
   const location = useLocation();
@@ -15,7 +15,7 @@ const Quiz: React.FC = () => {
 
   React.useEffect(() => {
     if (text) {
-      axios.post('http://localhost:8000/generate-quiz/', { text })
+      api.post('/generate-quiz/', { text })
         .then(response => {
           setQuestions(response.data.questions);
           setLoading(false); // Set loading to false after fetching

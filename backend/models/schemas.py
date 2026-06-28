@@ -28,6 +28,7 @@ class TranslateResponse(BaseModel):
 class ChatbotRequest(BaseModel):
     message: str
     user_id: str
+    session_id: str
 
 class ChatbotResponse(BaseModel):
     reply: str

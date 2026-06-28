@@ -1,13 +1,7 @@
-import os
+from config import GOOGLE_API_KEY
 
-try:
-    GOOGLE_API_KEY = os.environ["GOOGLE_API_KEY"]
-except KeyError as exc:
-    raise RuntimeError(
-        "GOOGLE_API_KEY is required. Set it in the environment before starting the backend."
-    ) from exc
-
-from fastapi import FastAPI, File, UploadFile, Form, Body
+from fastapi import FastAPI, File, UploadFile, Form, Body, Depends, HTTPException, Request
+from firebase_admin import auth as firebase_auth
 from PyPDF2 import PdfReader
 import io
 import spacy
@@ -18,40 +12,77 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_classic.chains import ConversationChain
 from langchain_classic.memory import ConversationBufferMemory
+from cachetools import TTLCache
+import threading
+from starlette.concurrency import run_in_threadpool
 
 app = FastAPI()
 nlp = spacy.load("en_core_web_sm")
 
-# Use Google's Gemini LLM
+
+async def verify_user(request: Request) -> dict:
+    header = request.headers.get("Authorization")
+    if not header or not header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid token")
+    token = header[7:]
+    try:
+        decoded = await run_in_threadpool(firebase_auth.verify_id_token, token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return decoded
+
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     google_api_key=GOOGLE_API_KEY,
     max_tokens=2048,
+    timeout=15,
+    max_retries=2,
 )
-conversation = ConversationChain(
-    llm=llm,
-    verbose=True,
-    memory=ConversationBufferMemory()
-)
+
+_session_cache: TTLCache[str, ConversationChain] = TTLCache(maxsize=256, ttl=3600)
+_cache_lock = threading.Lock()
+
+
+def _get_chain(session_id: str) -> ConversationChain:
+    with _cache_lock:
+        chain = _session_cache.get(session_id)
+        if chain is None:
+            chain = ConversationChain(
+                llm=llm,
+                verbose=True,
+                memory=ConversationBufferMemory(),
+            )
+            _session_cache[session_id] = chain
+        return chain
 
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the AI-Powered Easy-Learning Application"}
 
+MAX_PDF_SIZE = 5 * 1024 * 1024
+MAX_PDF_PAGES = 20
+
+
 @app.post("/upload-pdf/")
 async def upload_pdf(file: UploadFile = File(...)):
-    text = ""
+    pdf_data = await file.read()
+    if len(pdf_data) > MAX_PDF_SIZE:
+        raise HTTPException(status_code=400, detail="File exceeds 5 MB size limit")
     try:
-        pdf_data = await file.read()
         pdf_reader = PdfReader(io.BytesIO(pdf_data))
-        for page in pdf_reader.pages:
-            text += page.extract_text()
-    except Exception as e:
-        return {"error": str(e)}
+    except Exception:
+        raise HTTPException(status_code=400, detail="File is not a valid PDF")
+    if len(pdf_reader.pages) > MAX_PDF_PAGES:
+        raise HTTPException(status_code=400, detail="PDF exceeds 20-page limit")
+    text = ""
+    for page in pdf_reader.pages:
+        page_text = page.extract_text()
+        if page_text:
+            text += page_text
     return {"text": text}
 
 @app.post("/simplify-text/")
-async def simplify_text(text: str = Body(..., embed=True)):
+async def simplify_text(text: str = Body(..., embed=True), _user: dict = Depends(verify_user)):
     print(f"Received text for simplification: {text[:200]}...") # Log first 200 chars
     try:
         doc = nlp(text)
@@ -66,20 +97,19 @@ async def simplify_text(text: str = Body(..., embed=True)):
                     simplified_sent += token.text + " "
             simplified_text += simplified_sent.strip() + ". "
     except Exception as e:
-        print(f"Error processing text with spaCy: {e}")
-        return {"error": f"Error processing text with spaCy: {e}"}, 400 # Return 400 Bad Request for processing errors
+        raise HTTPException(status_code=400, detail=f"Error processing text with spaCy: {e}")
     return {"simplified_text": simplified_text}
 
 @app.post("/add-content/")
-async def add_content(text: str = Form(...)):
+async def add_content(text: str = Form(...), _user: dict = Depends(verify_user)):
     try:
         doc_ref = db.collection("content").add({"text": text})
         return {"id": doc_ref.id}
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/get-content/")
-async def get_content():
+async def get_content(_user: dict = Depends(verify_user)):
     try:
         content = []
         docs = db.collection("content").stream()
@@ -87,10 +117,10 @@ async def get_content():
             content.append({"id": doc.id, "text": doc.to_dict()["text"]})
         return {"content": content}
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/generate-quiz/")
-async def generate_quiz(text: str = Body(..., embed=True)):
+async def generate_quiz(text: str = Body(..., embed=True), _user: dict = Depends(verify_user)):
     try:
         doc = nlp(text)
         questions = []
@@ -122,14 +152,12 @@ async def generate_quiz(text: str = Body(..., embed=True)):
                     questions.append({"question": question, "options": options, "answer": blank})
         return {"questions": questions}
     except Exception as e:
-        print(f"Error generating quiz: {e}")
-        return {"error": f"Error generating quiz: {e}"}, 400
+        raise HTTPException(status_code=400, detail=f"Error generating quiz: {e}")
 
 @app.post("/chatbot/")
-async def chatbot(text: str = Body(..., embed=True)):
-    print(f"Chatbot received text: {text}")
-    response = conversation.predict(input=text)
-    print(f"Chatbot LLM response: {response}")
+async def chatbot(text: str = Body(...), session_id: str = Body(...), _user: dict = Depends(verify_user)):
+    chain = _get_chain(session_id)
+    response = await run_in_threadpool(chain.predict, input=text)
     return {"response": response}
 
 

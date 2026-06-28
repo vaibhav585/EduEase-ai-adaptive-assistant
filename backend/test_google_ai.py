@@ -1,13 +1,6 @@
-import os
+from config import GOOGLE_API_KEY
 
 import google.generativeai as genai
-
-try:
-    GOOGLE_API_KEY = os.environ["GOOGLE_API_KEY"]
-except KeyError as exc:
-    raise RuntimeError(
-        "GOOGLE_API_KEY is required. Set it in the environment before running this script."
-    ) from exc
 
 genai.configure(api_key=GOOGLE_API_KEY)
 

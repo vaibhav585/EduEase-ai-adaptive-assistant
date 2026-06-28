@@ -1,6 +1,6 @@
 
 import React from 'react';
-import axios from 'axios';
+import api from '../services/api';
 
 interface ContentItem {
   id: string;
@@ -20,7 +20,7 @@ const ContentForm: React.FC = () => {
     setLoadingContent(true);
     setFetchingError(null);
     try {
-      const response = await axios.get('http://localhost:8000/get-content/');
+      const response = await api.get('/get-content/');
       setContentList(response.data.content);
     } catch (error) {
       console.error('Error fetching content:', error);
@@ -53,7 +53,7 @@ const ContentForm: React.FC = () => {
       if (text) {
         const formData = new FormData();
         formData.append('text', text);
-        const response = await axios.post('http://localhost:8000/add-content/', formData);
+        const response = await api.post('/add-content/', formData);
         console.log('Content added:', response.data);
         setSubmissionMessage('Content added successfully!');
         setText(''); // Clear text field
@@ -62,14 +62,14 @@ const ContentForm: React.FC = () => {
       if (file) {
         const formData = new FormData();
         formData.append('file', file);
-        const uploadResponse = await axios.post('http://localhost:8000/upload-pdf/', formData, {
+        const uploadResponse = await api.post('/upload-pdf/', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
         });
         const addContentFormData = new FormData();
         addContentFormData.append('text', uploadResponse.data.text);
-        const addContentResponse = await axios.post('http://localhost:8000/add-content/', addContentFormData);
+        const addContentResponse = await api.post('/add-content/', addContentFormData);
         console.log('Content added:', addContentResponse.data);
         setSubmissionMessage('File content added successfully!');
         setFile(null); // Clear file input

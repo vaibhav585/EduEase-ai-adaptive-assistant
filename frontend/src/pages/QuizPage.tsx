@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../services/api";
 
 interface Question {
   question: string;
@@ -26,8 +26,8 @@ const QuizPage: React.FC = () => {
 
   useEffect(() => {
     if (text) {
-      axios
-        .post("http://localhost:8000/generate-quiz/", { text })
+      api
+        .post("/generate-quiz/", { text })
         .then((res) => {
           const data = res.data.questions.slice(0, TOTAL_QUESTIONS);
           setQuestions(data);

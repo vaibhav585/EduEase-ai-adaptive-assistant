@@ -1,7 +1,7 @@
 
 import React from 'react';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import api from '../services/api';
 
 const UploadForm: React.FC = () => {
   const [file, setFile] = React.useState<File | null>(null);
@@ -20,7 +20,7 @@ const UploadForm: React.FC = () => {
       const formData = new FormData();
       formData.append('file', file);
       try {
-        const response = await axios.post('http://localhost:8000/upload-pdf/', formData, {
+        const response = await api.post('/upload-pdf/', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },

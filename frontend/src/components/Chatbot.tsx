@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 
 interface Message {
   text: string;
@@ -27,7 +27,7 @@ const Chatbot: React.FC = () => {
     setLoading(true);
 
     try {
-      const response = await axios.post('http://localhost:8000/chatbot/', { text: input });
+      const response = await api.post('/chatbot/', { text: input });
       const botMessage: Message = { text: response.data.response, sender: 'bot' };
       setMessages((prevMessages) => [...prevMessages, botMessage]);
     } catch (error) {

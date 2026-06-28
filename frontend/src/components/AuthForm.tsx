@@ -21,13 +21,9 @@ const AuthForm: React.FC = () => {
       try {
         const snap = await getDoc(doc(db, 'users', user.user.uid));
         const role = snap.exists() ? (snap.data()?.role || 'student') : 'student';
-        if (role === 'admin') {
-          navigate('/admin-dashboard');
-        } else if (role === 'teacher') {
-          navigate('/teacher-dashboard');
-        } else {
-          navigate('/student-dashboard');
-        }
+        if (role === 'admin') navigate('/admin-dashboard');
+        else if (role === 'teacher') navigate('/teacher-dashboard');
+        else navigate('/student-dashboard');
       } catch {
         navigate('/student-dashboard');
       }
@@ -36,34 +32,34 @@ const AuthForm: React.FC = () => {
   }, [user, navigate]);
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div className="mb-4">
-        <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="email">Email</label>
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="space-y-1.5">
+        <label className="font-heading text-xs font-semibold text-on-surface-variant uppercase tracking-wider" htmlFor="email">Email Address</label>
         <input
-          className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-          id="email" type="email" placeholder="Email"
+          className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-3 text-on-surface focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all font-body"
+          id="email" type="email" placeholder="you@eduease.edu"
           value={email} onChange={(e) => setEmail(e.target.value)}
         />
       </div>
-      <div className="mb-6">
-        <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">Password</label>
+      <div className="space-y-1.5">
+        <label className="font-heading text-xs font-semibold text-on-surface-variant uppercase tracking-wider" htmlFor="password">Password</label>
         <input
-          className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline"
-          id="password" type="password" placeholder="******************"
+          className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-3 text-on-surface focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all font-body"
+          id="password" type="password" placeholder="Enter your password"
           value={password} onChange={(e) => setPassword(e.target.value)}
         />
       </div>
-      <div className="flex items-center justify-between">
-        <button
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full"
-          type="submit"
-          disabled={loading}
-        >
-          {loading ? 'Signing in...' : 'Sign In'}
-        </button>
-      </div>
+      <button
+        className="w-full bg-primary-container text-white font-heading text-sm font-semibold py-3.5 rounded-xl hover:bg-primary transition-colors active:scale-[0.98] shadow-lg shadow-primary/20"
+        type="submit"
+        disabled={loading}
+      >
+        {loading ? 'Signing in...' : 'Sign In'}
+      </button>
       {error && (
-        <p className="text-red-500 text-xs italic mt-4">{error.message}</p>
+        <div className="p-3 rounded-xl bg-error-container text-on-error-container text-xs font-body">
+          {error.message}
+        </div>
       )}
     </form>
   );

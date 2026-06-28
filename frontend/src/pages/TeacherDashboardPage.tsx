@@ -12,7 +12,6 @@ import {
 } from "recharts";
 
 interface Student { uid: string; email: string; grade_level: string | null; }
-
 interface QuizEntry { score: number; total_questions: number; wrong_topics: string[]; timestamp: string; }
 interface SessionEntry { session_id: string; average_focus_score: number; frustration_triggers: number; timestamp: string; }
 interface Analytics {
@@ -23,7 +22,7 @@ interface Analytics {
   total_frustration_triggers: number;
 }
 
-const COLORS = ["#4F46E5", "#22C55E", "#F97316", "#EF4444", "#8B5CF6", "#EC4899", "#14B8A6", "#F59E0B", "#6366F1", "#10B981"];
+const COLORS = ["#2a14b4", "#4338ca", "#5148d7", "#c3c0ff", "#4edea3", "#6ffbbe", "#F59E0B", "#EF4444", "#8B5CF6", "#14B8A6"];
 
 const TeacherDashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -32,7 +31,6 @@ const TeacherDashboardPage: React.FC = () => {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
-
   const [allAnalytics, setAllAnalytics] = useState<Record<string, Analytics>>({});
   const [classLoading, setClassLoading] = useState(false);
 
@@ -71,7 +69,6 @@ const TeacherDashboardPage: React.FC = () => {
 
   const handleLogout = async () => { await signOut(auth); navigate("/login"); };
 
-  // Classroom aggregate data
   const focusBuckets = { high: 0, medium: 0, low: 0 };
   const quizAvgPerStudent: { name: string; avg: number }[] = [];
   const sessionTimeline: { label: string; focus: number; frustrations: number }[] = [];
@@ -111,162 +108,206 @@ const TeacherDashboardPage: React.FC = () => {
   });
 
   const pieData = [
-    { name: "High Focus", value: focusBuckets.high },
-    { name: "Medium Focus", value: focusBuckets.medium },
-    { name: "Low Focus", value: focusBuckets.low },
+    { name: "Deep Focus", value: focusBuckets.high },
+    { name: "Steady Flow", value: focusBuckets.medium },
+    { name: "Needs Support", value: focusBuckets.low },
   ].filter((d) => d.value > 0);
-  const pieColors = ["#22C55E", "#F59E0B", "#EF4444"];
+  const pieColors = ["#2a14b4", "#4edea3", "#ba1a1a"];
+
+  const avgQuiz = quizAvgPerStudent.length > 0
+    ? Math.round(quizAvgPerStudent.reduce((a, b) => a + b.avg, 0) / quizAvgPerStudent.length) : null;
+
+  const allFocusScores: number[] = [];
+  students.forEach((s) => {
+    const a = allAnalytics[s.uid];
+    (a?.sessions ?? []).forEach((x) => { if (typeof x.average_focus_score === "number") allFocusScores.push(x.average_focus_score); });
+  });
+  const avgClassFocus = allFocusScores.length > 0
+    ? Math.round((allFocusScores.reduce((a, b) => a + b, 0) / allFocusScores.length) * 100)
+    : null;
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold text-indigo-800">Teacher Dashboard</h1>
-          <p className="text-slate-600 mt-1">Live student engagement & learning outcomes</p>
+    <div className="min-h-screen bg-surface-bright animate-fade-in">
+      <div className="max-w-[1440px] mx-auto px-4 md:px-12 py-8 space-y-8">
+        {/* Page Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="font-heading text-xs font-semibold text-primary uppercase tracking-widest">Teacher Dashboard</span>
+            <h1 className="font-heading text-3xl md:text-4xl font-bold text-on-surface mt-1">Classroom Overview</h1>
+          </div>
+          <button onClick={handleLogout}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-medium shadow-sm transition-all active:scale-95">
+            <span className="material-symbols-outlined text-[16px]">logout</span>Log Out
+          </button>
         </div>
-        <button onClick={handleLogout}
-          className="px-4 py-2 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-sm font-semibold shadow">
-          Log Out
-        </button>
-      </div>
 
-      {/* KPI */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="rounded-2xl bg-white shadow-md p-5 border border-slate-100">
-          <p className="text-sm text-slate-500">My Students</p>
-          <p className="text-3xl font-semibold text-amber-600 mt-1">{loading ? "—" : students.length}</p>
-        </div>
-        <div className="rounded-2xl bg-white shadow-md p-5 border border-slate-100">
-          <p className="text-sm text-slate-500">Avg Quiz Score</p>
-          <p className="text-3xl font-semibold text-indigo-600 mt-1">
-            {quizAvgPerStudent.length > 0 ? `${Math.round(quizAvgPerStudent.reduce((a, b) => a + b.avg, 0) / quizAvgPerStudent.length)}%` : "—"}
-          </p>
-        </div>
-        <div className="rounded-2xl bg-white shadow-md p-5 border border-slate-100">
-          <p className="text-sm text-slate-500">High Focus Rate</p>
-          <p className="text-3xl font-semibold text-emerald-600 mt-1">
-            {students.length > 0 && !classLoading ? `${Math.round((focusBuckets.high / Math.max(focusBuckets.high + focusBuckets.medium + focusBuckets.low, 1)) * 100)}%` : "—"}
-          </p>
-        </div>
-      </div>
-
-      {/* Classroom Charts */}
-      {!classLoading && students.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {pieData.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-md p-5 border border-slate-100">
-              <h3 className="text-md font-semibold text-slate-800 mb-3 text-center">Focus Distribution</h3>
-              <ResponsiveContainer width="100%" height={240}>
-                <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" outerRadius={80} label dataKey="value">
-                    {pieData.map((_, i) => <Cell key={i} fill={pieColors[i % pieColors.length]} />)}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+        {/* Hero Banner */}
+        <section className="relative overflow-hidden rounded-3xl p-8 md:p-10 bg-primary-container text-white shadow-lg">
+          <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div>
+              <h2 className="font-heading text-2xl md:text-3xl font-bold mb-2">Welcome back, Professor</h2>
+              <p className="text-lg opacity-90 max-w-2xl font-body">
+                {students.length > 0 ? `Your classroom has ${students.length} students. ${focusBuckets.high > 0 ? `${focusBuckets.high} are in deep focus.` : ""}` : "Loading your classroom..."}
+              </p>
             </div>
-          )}
-
-          {quizAvgPerStudent.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-md p-5 border border-slate-100">
-              <h3 className="text-md font-semibold text-slate-800 mb-3 text-center">Quiz Avg by Student</h3>
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={quizAvgPerStudent}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis domain={[0, 100]} unit="%" />
-                  <Tooltip />
-                  <Bar dataKey="avg" name="Avg Score %" radius={[6, 6, 0, 0]}>
-                    {quizAvgPerStudent.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="flex gap-3">
+              <div className="bg-white/20 backdrop-blur-md rounded-2xl p-4 border border-white/30 text-center min-w-[130px]">
+                <p className="font-heading text-xs font-semibold uppercase tracking-wider opacity-80">Students</p>
+                <p className="font-heading text-3xl font-bold">{loading ? "—" : students.length}</p>
+              </div>
+              <div className="bg-white/20 backdrop-blur-md rounded-2xl p-4 border border-white/30 text-center min-w-[130px]">
+                <p className="font-heading text-xs font-semibold uppercase tracking-wider opacity-80">Avg Focus</p>
+                <p className="font-heading text-3xl font-bold">{avgClassFocus !== null ? `${avgClassFocus}%` : "—"}</p>
+              </div>
             </div>
-          )}
+          </div>
+        </section>
 
-          {sessionTimeline.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-md p-5 border border-slate-100">
-              <h3 className="text-md font-semibold text-slate-800 mb-3 text-center">Recent Session Engagement</h3>
-              <ResponsiveContainer width="100%" height={240}>
-                <LineChart data={sessionTimeline}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="label" tick={{ fontSize: 9 }} />
-                  <YAxis domain={[0, 100]} unit="%" />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="focus" stroke="#22C55E" name="Focus %" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-      )}
+        {/* Analytical Bento Grid */}
+        {!classLoading && students.length > 0 && (
+          <section className="bento-grid">
+            {/* Focus Distribution Donut */}
+            {pieData.length > 0 && (
+              <div className="col-span-12 md:col-span-4 glass-card rounded-3xl p-6 flex flex-col items-center">
+                <h3 className="w-full font-heading text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-4">Focus Distribution</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={4} dataKey="value">
+                      {pieData.map((_, i) => <Cell key={i} fill={pieColors[i % pieColors.length]} />)}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
 
-      {/* Student Roster */}
-      <div className="bg-white rounded-2xl shadow-md p-6 border border-slate-100">
-        <h2 className="text-xl font-semibold text-slate-800 mb-4 text-center">Student Roster</h2>
-        {loading ? (
-          <p className="text-slate-500 text-center py-4">Loading students...</p>
-        ) : students.length === 0 ? (
-          <p className="text-slate-500 text-center py-4">No students assigned to you yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 text-slate-600">
-                  <th className="p-3 text-left">Email</th>
-                  <th className="p-3 text-left">Grade</th>
-                  <th className="p-3 text-left">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {students.map((s) => (
-                  <tr key={s.uid}
-                    className={`cursor-pointer transition ${selectedId === s.uid ? "bg-indigo-50" : "hover:bg-slate-50"}`}
-                    onClick={() => setSelectedId(s.uid)}>
-                    <td className="p-3 font-medium">{s.email}</td>
-                    <td className="p-3">{s.grade_level ?? "—"}</td>
-                    <td className="p-3">
-                      <button onClick={(e) => { e.stopPropagation(); setSelectedId(s.uid); }}
-                        className={`text-xs px-3 py-1 rounded-lg font-semibold ${
-                          selectedId === s.uid ? "bg-indigo-600 text-white" : "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
-                        }`}>
-                        {selectedId === s.uid ? "Selected" : "View"}
-                      </button>
-                    </td>
+            {/* Quiz Performance Bars */}
+            {quizAvgPerStudent.length > 0 && (
+              <div className="col-span-12 md:col-span-8 glass-card rounded-3xl p-6">
+                <h3 className="font-heading text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-4">Quiz Performance by Student</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={quizAvgPerStudent}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5eeff" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                    <YAxis domain={[0, 100]} unit="%" />
+                    <Tooltip />
+                    <Bar dataKey="avg" name="Avg Score %" radius={[8, 8, 0, 0]}>
+                      {quizAvgPerStudent.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* Session Engagement Timeline */}
+            {sessionTimeline.length > 0 && (
+              <div className="col-span-12 glass-card rounded-3xl p-6">
+                <h3 className="font-heading text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-4">Class Engagement Timeline</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={sessionTimeline}>
+                    <defs>
+                      <linearGradient id="focusGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#2a14b4" stopOpacity={0.3}/>
+                        <stop offset="100%" stopColor="#2a14b4" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5eeff" />
+                    <XAxis dataKey="label" tick={{ fontSize: 9 }} />
+                    <YAxis domain={[0, 100]} unit="%" />
+                    <Tooltip />
+                    <Legend />
+                    <Line type="monotone" dataKey="focus" stroke="#2a14b4" name="Focus %" strokeWidth={3} dot={{ r: 4 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Student Roster */}
+        <div className="glass-card rounded-3xl overflow-hidden">
+          <div className="p-6 border-b border-white/20 flex justify-between items-center">
+            <h3 className="font-heading text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Student Roster</h3>
+            {!loading && <span className="text-xs text-primary font-bold">{students.length} students</span>}
+          </div>
+          {loading ? (
+            <p className="text-on-surface-variant text-center py-8">Loading students...</p>
+          ) : students.length === 0 ? (
+            <p className="text-on-surface-variant text-center py-8">No students assigned to you yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-surface-container-low">
+                    <th className="px-6 py-3 text-left font-heading text-xs font-semibold text-on-surface-variant uppercase">Student</th>
+                    <th className="px-6 py-3 text-left font-heading text-xs font-semibold text-on-surface-variant uppercase">Grade</th>
+                    <th className="px-6 py-3 text-right font-heading text-xs font-semibold text-on-surface-variant uppercase">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-white/10">
+                  {students.map((s) => (
+                    <tr key={s.uid} className={`hover:bg-white/40 transition-colors cursor-pointer ${selectedId === s.uid ? "bg-primary-fixed/30" : ""}`} onClick={() => setSelectedId(s.uid)}>
+                      <td className="px-6 py-4 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-surface-variant flex items-center justify-center font-bold text-primary text-sm">
+                          {s.email.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-heading text-sm font-semibold text-on-surface">{s.email.split("@")[0]}</p>
+                          <p className="text-xs text-on-surface-variant">{s.email}</p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-on-surface">{s.grade_level ? `Grade ${s.grade_level}` : "—"}</td>
+                      <td className="px-6 py-4 text-right">
+                        <button onClick={(e) => { e.stopPropagation(); setSelectedId(s.uid); }}
+                          className={`font-heading text-xs font-semibold px-4 py-2 rounded-full transition-all ${
+                            selectedId === s.uid
+                              ? "bg-primary text-on-primary shadow-md"
+                              : "text-primary bg-primary/10 hover:bg-primary hover:text-white"
+                          }`}>
+                          {selectedId === s.uid ? "Selected" : "View Analytics"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Per-student drill-down */}
+        {selectedId && (
+          <div className="space-y-6 animate-fade-in">
+            <h2 className="font-heading text-xl font-semibold text-on-surface text-center">
+              Analytics: {students.find((s) => s.uid === selectedId)?.email ?? selectedId}
+            </h2>
+            {analyticsLoading ? (
+              <p className="text-on-surface-variant text-center py-8">Loading analytics...</p>
+            ) : analytics ? (
+              <>
+                <Charts quizzes={analytics.quizzes} sessions={analytics.sessions} weakTopics={analytics.weak_topics} />
+                {analytics.total_frustration_triggers > 0 && (
+                  <div className="glass-card rounded-2xl p-5 border-l-4 border-error flex gap-3 items-start">
+                    <span className="material-symbols-outlined text-error">warning</span>
+                    <div>
+                      <p className="font-heading text-sm font-semibold text-on-surface">Frustration Alert</p>
+                      <p className="text-xs text-on-surface-variant">{analytics.total_frustration_triggers} frustration triggers recorded. Consider a personalized intervention.</p>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-on-surface-variant text-center py-8">No data available for this student.</p>
+            )}
           </div>
         )}
       </div>
 
-      {/* Per-student analytics */}
-      {selectedId && (
-        <div className="space-y-6">
-          <h2 className="text-xl font-semibold text-slate-800 text-center">
-            Analytics: {students.find((s) => s.uid === selectedId)?.email ?? selectedId}
-          </h2>
-          {analyticsLoading ? (
-            <p className="text-slate-500 text-center py-8">Loading analytics...</p>
-          ) : analytics ? (
-            <>
-              <Charts quizzes={analytics.quizzes} sessions={analytics.sessions} weakTopics={analytics.weak_topics} />
-              {analytics.total_frustration_triggers > 0 && (
-                <div className="bg-amber-50 rounded-xl p-4 border border-amber-200 text-center">
-                  <p className="text-amber-800 font-medium">
-                    Total frustration triggers recorded: {analytics.total_frustration_triggers}
-                  </p>
-                </div>
-              )}
-            </>
-          ) : (
-            <p className="text-slate-500 text-center py-8">No data available for this student.</p>
-          )}
-        </div>
-      )}
+      <div className="fixed top-0 left-0 w-full h-full pointer-events-none -z-10 overflow-hidden">
+        <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[60%] bg-primary/5 rounded-full blur-[120px] motion-safe:animate-pulse"></div>
+        <div className="absolute bottom-[-10%] left-[-5%] w-[30%] h-[50%] bg-surface-variant/40 rounded-full blur-[120px]"></div>
+      </div>
     </div>
   );
 };

@@ -217,15 +217,15 @@ def verify_role(required_role: str):
     return _check
 
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
+    model="gemini-2.0-flash",
     google_api_key=GOOGLE_API_KEY,
     max_tokens=2048,
-    timeout=15,
-    max_retries=2,
+    timeout=30,
+    max_retries=3,
 )
 
 _sentiment_llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
+    model="gemini-2.0-flash",
     google_api_key=GOOGLE_API_KEY,
     max_tokens=256,
     timeout=10,
@@ -566,7 +566,31 @@ async def chatbot(
     try:
         chain = _get_chain(session_id)
         llm_response = await run_in_threadpool(chain.predict, input=prompt)
-    except Exception:
+    except Exception as chat_err:
+        err_str = str(chat_err)
+        print(f"[CHATBOT ERROR] chain.predict failed: {err_str[:200]}")
+        is_rate_limit = "429" in err_str or "quota" in err_str.lower() or "rate" in err_str.lower()
+        if is_rate_limit:
+            return ChatbotResponse(
+                response="I'm currently experiencing high demand. Please wait a moment and try again.",
+                sentiment=_DEFAULT_SENTIMENT,
+            )
+        try:
+            direct_result = await run_in_threadpool(llm.invoke, [HumanMessage(content=prompt)])
+            llm_response = direct_result.content
+        except Exception as direct_err:
+            print(f"[CHATBOT ERROR] direct LLM also failed: {str(direct_err)[:200]}")
+            if "429" in str(direct_err) or "quota" in str(direct_err).lower():
+                return ChatbotResponse(
+                    response="I'm currently experiencing high demand. Please wait a moment and try again.",
+                    sentiment=_DEFAULT_SENTIMENT,
+                )
+            return ChatbotResponse(
+                response=SAFE_FALLBACK,
+                sentiment=_DEFAULT_SENTIMENT,
+            )
+
+    if not isinstance(llm_response, str) or not llm_response.strip():
         return ChatbotResponse(
             response=SAFE_FALLBACK,
             sentiment=_DEFAULT_SENTIMENT,

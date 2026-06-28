@@ -254,40 +254,37 @@ const Eye: React.FC<Props> = ({ targetId, onFocusChange, sentiment }) => {
   };
 
   // ───── Render ─────
+  const ringColor = focused ? "#4edea3" : "#ba1a1a";
+  const ringOffset = focused ? 100 : 300;
+
   if (status === "error") {
     return (
-      <div className="flex flex-col items-center p-4 bg-red-50 rounded-2xl shadow-md">
-        <h2 className="text-lg font-semibold mb-2">👁️ Focus Tracker</h2>
-        <p className="text-red-500 text-sm text-center">{errorMsg}</p>
+      <div className="glass-card rounded-[2rem] p-8 flex flex-col items-center text-center">
+        <span className="font-heading text-xs font-semibold text-error uppercase tracking-widest mb-2">Focus Tracker</span>
+        <p className="text-error text-sm">{errorMsg}</p>
       </div>
     );
   }
 
   if (status === "loading") {
     return (
-      <div className="flex flex-col items-center p-4 bg-[#fdf7f2] rounded-2xl shadow-md">
-        <h2 className="text-lg font-semibold mb-2">👁️ Focus Tracker</h2>
-        <p className="motion-safe:animate-pulse text-blue-600 text-sm" role="status">Starting webcam…</p>
+      <div className="glass-card rounded-[2rem] p-8 flex flex-col items-center text-center">
+        <span className="font-heading text-xs font-semibold text-primary uppercase tracking-widest mb-4">Focus Status</span>
+        <p className="motion-safe:animate-pulse text-primary text-sm font-body" role="status">Starting webcam...</p>
       </div>
     );
   }
 
   if (status === "ready") {
     return (
-      <div className="flex flex-col items-center p-4 bg-[#fdf7f2] rounded-2xl shadow-md">
-        <h2 className="text-lg font-semibold mb-2">👁️ Focus Tracker</h2>
-        <p className="text-sm text-gray-600 mb-3 text-center">
-          Camera is active. Click below to start calibration.
-          <br />
-          <span className="text-xs text-gray-400">
-            You'll click on 5 dots to train eye tracking.
-          </span>
+      <div className="glass-card rounded-[2rem] p-8 flex flex-col items-center text-center">
+        <span className="font-heading text-xs font-semibold text-primary uppercase tracking-widest mb-4">Focus Status</span>
+        <p className="text-sm text-on-surface-variant mb-4 font-body">
+          Camera is active. Click below to calibrate eye tracking.
         </p>
-        <button
-          onClick={startCalibration}
-          className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-        >
-          🎯 Start Calibration
+        <button onClick={startCalibration}
+          className="px-6 py-2.5 rounded-full border-2 border-primary text-primary font-heading text-sm font-semibold hover:bg-primary hover:text-on-primary transition-all active:scale-95">
+          Start Calibration
         </button>
       </div>
     );
@@ -295,60 +292,34 @@ const Eye: React.FC<Props> = ({ targetId, onFocusChange, sentiment }) => {
 
   if (status === "calibrating") {
     const point = CALIBRATION_POINTS[calPointIndex];
+    const calProgress = ((calPointIndex * CLICKS_PER_POINT + clickCount) / (CALIBRATION_POINTS.length * CLICKS_PER_POINT)) * 100;
     return (
       <>
-        <div className="fixed inset-0 bg-black/70 z-[10000] flex flex-col items-center justify-center">
+        <div className="fixed inset-0 bg-inverse-surface/80 backdrop-blur-sm z-[10000] flex flex-col items-center justify-center">
           <div className="text-white text-center mb-8">
-            <h2 className="text-2xl font-bold mb-2">Eye Calibration</h2>
-            <p className="text-lg">
-              Click the{" "}
-              <span className="text-yellow-300 font-bold">yellow dot</span>{" "}
-              {CLICKS_PER_POINT} times while looking at it
+            <h2 className="font-heading text-2xl font-bold mb-2">Eye Calibration</h2>
+            <p className="font-body text-lg opacity-90">
+              Click the <span className="text-tertiary-fixed font-bold">green dot</span> {CLICKS_PER_POINT} times
             </p>
-            <p className="text-sm text-gray-300 mt-1">
-              Point {calPointIndex + 1} / {CALIBRATION_POINTS.length} •{" "}
-              Clicks: {clickCount} / {CLICKS_PER_POINT}
+            <p className="text-sm opacity-60 mt-1 font-body">
+              Point {calPointIndex + 1} / {CALIBRATION_POINTS.length} · Clicks: {clickCount} / {CLICKS_PER_POINT}
             </p>
           </div>
 
-          <div className="w-64 h-2 bg-gray-700 rounded-full mb-8">
-            <div
-              className="h-full bg-indigo-500 rounded-full transition-all duration-300"
-              style={{
-                width: `${
-                  ((calPointIndex * CLICKS_PER_POINT + clickCount) /
-                    (CALIBRATION_POINTS.length * CLICKS_PER_POINT)) *
-                  100
-                }%`,
-              }}
-            />
+          <div className="w-64 h-2 bg-white/10 rounded-full mb-8 overflow-hidden">
+            <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${calProgress}%` }} />
           </div>
 
           <button
             onClick={handleCalibrationClick}
             aria-label={`Calibration point ${calPointIndex + 1} of ${CALIBRATION_POINTS.length}, click ${CLICKS_PER_POINT - clickCount} more times`}
-            className="absolute w-12 h-12 rounded-full bg-yellow-400 hover:bg-yellow-300
-                       border-4 border-yellow-200 shadow-lg shadow-yellow-400/50
-                       motion-safe:animate-pulse cursor-pointer transition-all hover:scale-110
-                       flex items-center justify-center"
-            style={{
-              left: `${point.x}%`,
-              top: `${point.y}%`,
-              transform: "translate(-50%, -50%)",
-            }}
-          >
-            <div className="w-3 h-3 rounded-full bg-yellow-800" />
+            className="absolute w-14 h-14 rounded-full bg-tertiary-fixed hover:bg-tertiary-fixed-dim border-4 border-white/30 shadow-lg shadow-tertiary-fixed/50 motion-safe:animate-pulse cursor-pointer transition-all hover:scale-110 flex items-center justify-center"
+            style={{ left: `${point.x}%`, top: `${point.y}%`, transform: "translate(-50%, -50%)" }}>
+            <div className="w-4 h-4 rounded-full bg-white/80" />
           </button>
 
-          <button
-            onClick={() => {
-              lastDataTimeRef.current = Date.now();
-              focusedRef.current = true;
-              setFocused(true);
-              setStatus("tracking");
-            }}
-            className="fixed bottom-6 right-6 text-gray-400 hover:text-white text-sm underline"
-          >
+          <button onClick={() => { lastDataTimeRef.current = Date.now(); focusedRef.current = true; setFocused(true); setStatus("tracking"); }}
+            className="fixed bottom-6 right-6 text-white/40 hover:text-white text-sm underline font-body">
             Skip calibration
           </button>
         </div>
@@ -358,59 +329,59 @@ const Eye: React.FC<Props> = ({ targetId, onFocusChange, sentiment }) => {
 
   // status === "tracking"
   return (
-    <div className="flex flex-col items-center p-4 bg-[#fdf7f2] rounded-2xl shadow-md relative">
-      <h2 className="text-lg font-semibold mb-2">👁️ Focus Tracker</h2>
+    <div className={`glass-card rounded-[2rem] p-8 flex flex-col items-center text-center relative overflow-hidden transition-all duration-700`}>
+      <span className="font-heading text-xs font-semibold text-primary uppercase tracking-widest mb-4 z-10">Focus Status</span>
 
-      <div
-        role="alert"
-        aria-live="assertive"
-        className={`w-full overflow-hidden motion-safe:transition-all motion-safe:duration-500 motion-safe:ease-in-out ${
-          showBanner ? "max-h-40 opacity-100 mb-3" : "max-h-0 opacity-0"
-        }`}
-      >
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
-          <p className="text-amber-800 text-sm font-medium">{bannerMessage}</p>
+      {/* SVG Focus Ring */}
+      <div className="relative w-44 h-44 mb-4 z-10 flex items-center justify-center">
+        <svg className="w-full h-full" style={{transform: "rotate(-90deg)"}}>
+          <circle cx="88" cy="88" r="80" fill="transparent" stroke="#dce9ff" strokeWidth="4" />
+          <circle cx="88" cy="88" r="80" fill="transparent" stroke={ringColor} strokeWidth="8"
+            strokeLinecap="round" strokeDasharray="503" strokeDashoffset={ringOffset}
+            className="pulse-ring transition-all duration-1000" />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center" aria-live="polite" aria-atomic="true">
+          <span className={`font-heading text-lg font-semibold ${focused ? "text-tertiary-fixed-dim" : "text-error"}`}>
+            {focused ? "Locked In" : "Drift Detected"}
+          </span>
+        </div>
+      </div>
+
+      {/* Banner */}
+      <div role="alert" aria-live="assertive"
+        className={`w-full overflow-hidden motion-safe:transition-all motion-safe:duration-500 motion-safe:ease-in-out z-10 ${showBanner ? "max-h-40 opacity-100 mb-3" : "max-h-0 opacity-0"}`}>
+        <div className={`p-3 rounded-2xl text-center ${focused ? "bg-surface-container-low border border-white/40" : "bg-error-container text-on-error-container"}`}>
+          <p className="text-sm font-medium font-body">{bannerMessage}</p>
           <div className="flex justify-center gap-2 mt-2">
-            <button
-              onClick={speakBanner}
-              className="text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded-lg"
-            >
-              Read Aloud
-            </button>
-            <button
-              onClick={() => setShowBanner(false)}
-              className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded-lg"
-            >
-              Dismiss
-            </button>
+            <button onClick={speakBanner} className="text-xs bg-primary text-on-primary px-3 py-1 rounded-full font-heading font-semibold">Read Aloud</button>
+            <button onClick={() => setShowBanner(false)} className="text-xs bg-surface-container text-on-surface-variant px-3 py-1 rounded-full font-heading font-semibold">Dismiss</button>
           </div>
         </div>
       </div>
 
-      <div aria-live="polite" aria-atomic="true">
-        {focused ? (
-          <div className="text-center">
-            <div className="text-4xl mb-2" aria-hidden="true">🌟</div>
-            <p className="text-green-600 font-semibold text-lg">Great focus!</p>
-            <p className="text-xs text-gray-500 mt-1">Keep looking at the screen</p>
-          </div>
-        ) : (
-          <div className="text-center">
-            <div className="text-4xl mb-2 motion-safe:animate-bounce" aria-hidden="true">😅</div>
-            <p className="text-red-500 font-bold text-lg motion-safe:animate-pulse">
-              Focus drifted!
-            </p>
-            <p className="text-xs text-gray-500 mt-1">Look back at the screen</p>
-          </div>
-        )}
+      {/* Metrics */}
+      <div className="grid grid-cols-2 gap-3 w-full z-10 mt-2">
+        <div className="bg-surface-container-low p-3 rounded-xl border border-white/40">
+          <p className="text-[10px] text-on-surface-variant uppercase tracking-wider font-heading">Status</p>
+          <p className={`font-heading text-lg font-bold ${focused ? "text-tertiary-fixed-dim" : "text-error"}`}>
+            {focused ? "Active" : "Drifted"}
+          </p>
+        </div>
+        <div className="bg-surface-container-low p-3 rounded-xl border border-white/40">
+          <p className="text-[10px] text-on-surface-variant uppercase tracking-wider font-heading">Gaze Count</p>
+          <p className="font-heading text-lg font-bold text-primary">{gazeCountRef.current > 999 ? "999+" : gazeCountRef.current}</p>
+        </div>
       </div>
 
-      <button
-        onClick={startCalibration}
-        className="mt-3 text-xs text-indigo-500 hover:text-indigo-700 underline"
-      >
+      <button onClick={startCalibration}
+        className="mt-4 z-10 px-4 py-2 rounded-full border-2 border-primary text-primary font-heading text-xs font-semibold hover:bg-primary hover:text-on-primary transition-all active:scale-95">
         Re-calibrate
       </button>
+
+      {/* Drift overlay */}
+      {!focused && (
+        <div className="absolute inset-0 rounded-[2rem] pointer-events-none" style={{background: "radial-gradient(circle, rgba(186,26,26,0) 0%, rgba(186,26,26,0.08) 100%)"}} />
+      )}
     </div>
   );
 };

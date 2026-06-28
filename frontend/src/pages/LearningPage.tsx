@@ -142,105 +142,97 @@ const LearningPage: React.FC = () => {
   };
 
   return (
-    <div className="relative">
-      <div className="flex flex-col lg:flex-row gap-6">
+    <>
+      <div className="relative animate-fade-in flex flex-col lg:flex-row gap-6">
         {/* Focus Tracker */}
-        <div className="lg:w-1/3 w-full">
-          <div className="bg-white rounded-2xl shadow-md p-4 border border-slate-100">
-            <h2 className="text-lg font-semibold text-slate-800 mb-3 text-center">👁️ Focus Tracker</h2>
-            <Eye
-              targetId="reading-area"
-              sentiment={latestSentiment}
-              onFocusChange={(isFocused) => {
-                if (!isFocused && isPlaying) setIsPlaying(false);
-              }}
-            />
+        <div className="w-full lg:w-1/3 flex flex-col gap-6">
+          <Eye
+            targetId="reading-area"
+            sentiment={latestSentiment}
+            onFocusChange={(isFocused) => {
+              if (!isFocused && isPlaying) setIsPlaying(false);
+            }}
+          />
+          {/* Progress card */}
+          <div className="glass-card rounded-[2rem] p-5 flex flex-col gap-3">
+            <div className="flex justify-between items-center">
+              <span className="font-heading text-xs font-semibold text-on-surface-variant uppercase tracking-widest">Reading Progress</span>
+              <span className="font-heading text-xs font-bold text-tertiary-fixed-dim">
+                {sentences.length > 0 ? `${Math.round(((currentSentenceIndex + 1) / sentences.length) * 100)}%` : "0%"}
+              </span>
+            </div>
+            <div className="w-full h-3 bg-surface-container-high rounded-full overflow-hidden">
+              <div className="h-full bg-tertiary-fixed-dim rounded-full transition-all duration-500"
+                style={{ width: sentences.length > 0 ? `${((currentSentenceIndex + 1) / sentences.length) * 100}%` : "0%" }}></div>
+            </div>
           </div>
         </div>
 
         {/* Reading Module */}
-        <div className="lg:w-2/3 w-full">
-          <div className="bg-white rounded-2xl shadow-md p-6 border border-slate-100">
-            <h2 className="text-2xl font-semibold text-indigo-800 mb-4 text-center">📘 Learning Module</h2>
-
-            {/* Controls */}
-            <div className="mb-5 flex flex-wrap justify-center items-center gap-4">
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-slate-600">Highlight Mode:</label>
-                <select
-                  value={highlightMode}
+        <div className="flex-1 glass-card rounded-[2rem] overflow-hidden flex flex-col shadow-2xl relative">
+          {/* Toolbar */}
+          <header className="p-4 md:p-5 border-b border-white/20 bg-surface-container-lowest/50 backdrop-blur-md flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 bg-surface-container rounded-full px-3 py-1.5">
+                <span className="material-symbols-outlined text-on-surface-variant text-[18px]">ink_highlighter</span>
+                <select value={highlightMode}
                   onChange={(e) => setHighlightMode(e.target.value as 'word' | 'sentence')}
-                  className="p-2 border border-slate-200 rounded-lg bg-white"
-                >
-                  <option value="word">Word by Word</option>
-                  <option value="sentence">Sentence by Sentence</option>
+                  className="bg-transparent border-none focus:ring-0 text-xs font-heading font-semibold text-on-surface cursor-pointer">
+                  <option value="word">Word</option>
+                  <option value="sentence">Sentence</option>
                 </select>
               </div>
-              <div className="flex items-center gap-3">
-                <label htmlFor="wpm-slider" className="text-sm text-slate-600">WPM: {wpm}</label>
-                <input
-                  id="wpm-slider"
-                  type="range"
-                  min="50"
-                  max="500"
-                  step="10"
-                  value={wpm}
+              <div className="hidden lg:flex items-center gap-2">
+                <span className="text-xs text-on-surface-variant font-heading">WPM:</span>
+                <input id="wpm-slider" type="range" min="50" max="500" step="10" value={wpm}
                   onChange={(e) => setWpm(Number(e.target.value))}
-                  className="w-48 accent-indigo-600"
-                />
+                  className="w-24 h-1 bg-surface-container-high rounded-lg appearance-none cursor-pointer accent-primary" />
+                <span className="text-xs font-heading font-semibold text-primary min-w-[32px] text-center">{wpm}</span>
               </div>
             </div>
+            <div className="flex gap-2">
+              <button onClick={handleSpeak}
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-surface-container-high text-on-surface-variant hover:bg-primary-container hover:text-on-primary transition-all">
+                <span className="material-symbols-outlined">volume_up</span>
+              </button>
+              <button onClick={handlePlayPause}
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-primary text-on-primary shadow-lg hover:scale-105 active:scale-95 transition-all">
+                <span className="material-symbols-outlined">{isPlaying ? "pause" : "play_arrow"}</span>
+              </button>
+            </div>
+          </header>
 
-            {/* Reading Area */}
-            <div
-              id="reading-area"
-              role="region"
-              aria-label="Reading area"
-              aria-live="polite"
-              aria-atomic="false"
-              className="bg-indigo-50/60 rounded-xl p-4 border border-indigo-100"
-            >
+          {/* Content body */}
+          <article id="reading-area" role="region" aria-label="Reading area" aria-live="polite" aria-atomic="false"
+            className="flex-1 overflow-y-auto p-8 md:p-10 scroll-smooth">
+            <div className="max-w-2xl mx-auto">
               {renderContent()}
             </div>
+          </article>
 
-            {/* Actions */}
-            <div className="flex flex-wrap justify-center gap-3 mt-5">
-              <button
-                onClick={handlePlayPause}
-                className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 px-4 rounded-lg"
-              >
-                {isPlaying ? 'Pause' : 'Play'}
-              </button>
-              <button
-                onClick={handleReset}
-                className="bg-rose-500 hover:bg-rose-600 text-white font-semibold py-2 px-4 rounded-lg"
-              >
-                Reset
-              </button>
-              <button
-                onClick={handleSpeak}
-                className="bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2 px-4 rounded-lg"
-              >
-                Speak
-              </button>
-              <button
-                onClick={navigateToQuiz}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg"
-              >
-                Take a Quiz
-              </button>
-            </div>
-          </div>
+          {/* Footer */}
+          <footer className="p-4 md:p-5 border-t border-white/20 flex justify-between items-center bg-surface-bright/80 backdrop-blur-md">
+            <button onClick={handleReset}
+              className="flex items-center gap-1.5 font-heading text-xs font-semibold text-on-surface-variant hover:text-primary transition-colors">
+              <span className="material-symbols-outlined text-[18px]">restart_alt</span>
+              Reset
+            </button>
+            <button onClick={navigateToQuiz}
+              className="px-5 py-2.5 rounded-xl bg-primary text-on-primary font-heading text-xs font-semibold shadow-md hover:shadow-lg transition-all active:scale-95">
+              Take Quiz
+            </button>
+          </footer>
         </div>
       </div>
 
-      {/* Chatbot toggle + panel */}
+      {/* Chatbot FAB — outside content flow, viewport-fixed */}
       <button
         onClick={() => setChatOpen((prev) => !prev)}
         aria-label={chatOpen ? 'Close assistant' : 'Open assistant'}
-        className="fixed bottom-4 left-4 z-50 w-12 h-12 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-xl shadow-lg flex items-center justify-center motion-safe:transition-transform hover:scale-110"
+        className="fixed bottom-4 right-4 z-[9999] w-14 h-14 rounded-full bg-primary text-on-primary shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all group"
+        style={{isolation: "isolate"}}
       >
-        {chatOpen ? '✕' : '💬'}
+        <span className="material-symbols-outlined group-hover:rotate-12 transition-transform">{chatOpen ? 'close' : 'auto_awesome'}</span>
       </button>
 
       {chatOpen && (
@@ -250,7 +242,7 @@ const LearningPage: React.FC = () => {
           readingDifficulty={reading_difficulty}
         />
       )}
-    </div>
+    </>
   );
 };
 

@@ -94,43 +94,89 @@ const QuizPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center text-lg text-slate-600">
-        Loading quiz...
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <p className="font-heading text-lg text-on-surface-variant animate-pulse">Loading quiz...</p>
       </div>
     );
   }
 
   if (isQuizCompleted) {
     const uniqueWeakAreas = [...new Set(wrongTopics)];
+    const pct = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 0;
+    const circumference = 2 * Math.PI * 45;
+    const offset = circumference - (pct / 100) * circumference;
+
     return (
-      <div className="mx-auto max-w-2xl bg-white rounded-2xl shadow-md p-8 border border-slate-100">
-        <h2 className="text-3xl font-semibold text-indigo-800 mb-2 text-center">Quiz Completed!</h2>
-        <p className="text-lg text-slate-700 text-center mb-6">
-          Your Score: <b>{score}/{totalQuestions}</b>
-        </p>
-
-        {uniqueWeakAreas.length > 0 ? (
-          <div className="bg-indigo-50 rounded-xl p-5 border border-indigo-100">
-            <h3 className="text-lg font-semibold text-slate-800 mb-2">Focus Areas to Improve</h3>
-            <ul className="list-disc ml-6 text-slate-700">
-              {uniqueWeakAreas.map((topic, i) => <li key={i}>{topic}</li>)}
-            </ul>
+      <div className="max-w-[1400px] mx-auto px-4 md:px-12 py-8 animate-fade-in">
+        <div className="bento-grid">
+          {/* Score Card */}
+          <div className="col-span-12 md:col-span-4 glass-card rounded-3xl p-8 flex flex-col items-center text-center">
+            <h3 className="font-heading text-xl font-semibold text-on-surface mb-6">Quiz Performance</h3>
+            <div className="relative w-40 h-40 mb-6">
+              <svg className="w-full h-full" viewBox="0 0 100 100" style={{transform: "rotate(-90deg)"}}>
+                <circle cx="50" cy="50" r="45" fill="transparent" stroke="#e5eeff" strokeWidth="8" />
+                <circle cx="50" cy="50" r="45" fill="transparent" stroke="#2a14b4" strokeWidth="8"
+                  strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset}
+                  style={{transition: "stroke-dashoffset 1s ease-out"}} />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="font-heading text-4xl font-bold text-primary">{pct}%</span>
+              </div>
+            </div>
+            <p className="text-base text-on-surface-variant font-body">{score}/{totalQuestions} correct answers</p>
           </div>
-        ) : (
-          <p className="text-emerald-600 text-lg font-medium text-center">
-            Great job! No major weak areas detected.
-          </p>
-        )}
 
-        <div className="flex justify-center gap-3 mt-6">
-          <button onClick={handleRestart}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-semibold">
-            Retry Quiz
-          </button>
-          <button onClick={() => navigate("/student-dashboard")}
-            className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg font-semibold">
-            Go to Dashboard
-          </button>
+          {/* Metrics */}
+          <div className="col-span-12 md:col-span-8 glass-card rounded-3xl p-8">
+            <h3 className="font-heading text-xl font-semibold text-on-surface mb-6">Session Summary</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-surface-container-low p-4 rounded-2xl">
+                <span className="material-symbols-outlined text-primary mb-2 block">check_circle</span>
+                <p className="text-xs text-on-surface-variant uppercase tracking-wider font-heading font-semibold">Correct</p>
+                <p className="font-heading text-2xl font-bold text-on-surface">{score}</p>
+              </div>
+              <div className="bg-surface-container-low p-4 rounded-2xl">
+                <span className="material-symbols-outlined text-error mb-2 block">cancel</span>
+                <p className="text-xs text-on-surface-variant uppercase tracking-wider font-heading font-semibold">Missed</p>
+                <p className="font-heading text-2xl font-bold text-on-surface">{totalQuestions - score}</p>
+              </div>
+              <div className="bg-surface-container-low p-4 rounded-2xl">
+                <span className="material-symbols-outlined text-tertiary-fixed-dim mb-2 block">quiz</span>
+                <p className="text-xs text-on-surface-variant uppercase tracking-wider font-heading font-semibold">Total</p>
+                <p className="font-heading text-2xl font-bold text-on-surface">{totalQuestions}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Focus Areas */}
+          {uniqueWeakAreas.length > 0 && (
+            <div className="col-span-12 glass-card rounded-3xl p-8 border-l-4 border-primary">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="material-symbols-outlined text-primary text-3xl">lightbulb_circle</span>
+                <h3 className="font-heading text-xl font-semibold">Focus Areas to Improve</h3>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {uniqueWeakAreas.map((topic, i) => (
+                  <div key={i} className="flex items-center gap-2 bg-surface-container-low border border-primary/20 px-4 py-2 rounded-full">
+                    <span className="w-2 h-2 rounded-full bg-primary motion-safe:animate-pulse"></span>
+                    <span className="text-sm text-on-surface font-body">{topic}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="col-span-12 flex justify-center gap-4 mt-4">
+            <button onClick={handleRestart}
+              className="px-8 py-3 rounded-xl font-heading text-sm font-semibold border border-outline text-on-surface hover:bg-surface-variant/30 transition-all">
+              Retry Quiz
+            </button>
+            <button onClick={() => navigate("/student-dashboard")}
+              className="px-8 py-3 rounded-xl font-heading text-sm font-semibold bg-primary text-white shadow-lg hover:shadow-xl transition-all active:scale-95">
+              Go to Dashboard
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -138,8 +184,8 @@ const QuizPage: React.FC = () => {
 
   if (totalQuestions === 0) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center text-lg text-slate-600">
-        No questions could be generated from this text. Try uploading a longer passage.
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <p className="font-heading text-lg text-on-surface-variant">No questions could be generated. Try a longer passage.</p>
       </div>
     );
   }
@@ -149,71 +195,122 @@ const QuizPage: React.FC = () => {
 
   if (!currentQuestion || !currentQuestion.options) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center text-lg text-slate-600">
-        Error loading question {currentIndex + 1}. Please restart the quiz.
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <p className="font-heading text-lg text-on-surface-variant">Error loading question {currentIndex + 1}. Please restart.</p>
       </div>
     );
   }
 
   const qType = currentQuestion.question_type || "fill_blank";
-  const typeLabel = qType === "mcq" ? "Multiple Choice" : qType === "true_false" ? "True or False" : "Fill in the Blank";
+  const typeBadge =
+    qType === "mcq" ? { label: "Multiple Choice", cls: "bg-primary-fixed text-on-primary-fixed-variant" } :
+    qType === "true_false" ? { label: "True or False", cls: "bg-tertiary-fixed text-on-tertiary-fixed-variant" } :
+    { label: "Fill in the Blank", cls: "bg-secondary-container text-on-surface" };
   const hasAnswer = qType === "fill_blank" ? typedAnswer.trim().length > 0 : !!selectedAnswer;
 
+  const progressCircumference = 2 * Math.PI * 40;
+  const progressOffset = progressCircumference - (progress / 100) * progressCircumference;
+
   return (
-    <div className="mx-auto max-w-3xl bg-white rounded-2xl shadow-md p-8 border border-slate-100">
-      <h2 className="text-2xl font-semibold text-indigo-800 mb-1 text-center">Quiz Time!</h2>
-      <p className="text-slate-600 text-center mb-1">
-        Question {currentIndex + 1} of {totalQuestions}
-      </p>
-      <p className="text-xs text-slate-400 text-center mb-4">{typeLabel}</p>
-
-      <div className="w-full h-2 rounded-full bg-slate-200/70 overflow-hidden mb-6">
-        <div className="h-2 bg-indigo-500 transition-all" style={{ width: `${progress}%` }} />
-      </div>
-
-      <h3 className="text-xl font-semibold mb-5 text-center text-slate-800">
-        {currentQuestion.question}
-      </h3>
-
-      {/* True/False and MCQ: radio options */}
-      {(qType === "true_false" || qType === "mcq") && (
-        <div className="flex flex-col gap-3">
-          {currentQuestion.options.map((option, index) => (
-            <label key={index}
-              className={`p-3 border rounded-xl cursor-pointer transition
-                ${selectedAnswer === option ? "bg-indigo-50 border-indigo-300" : "hover:bg-slate-50 border-slate-200"}`}>
-              <input type="radio" name="quiz" value={option}
-                checked={selectedAnswer === option}
-                onChange={() => setSelectedAnswer(option)}
-                className="mr-2" />
-              {option}
-            </label>
-          ))}
+    <div className="max-w-[1400px] mx-auto px-4 md:px-12 py-8 animate-fade-in">
+      {/* Header */}
+      <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+        <div>
+          <h1 className="font-heading text-3xl md:text-4xl font-bold text-on-surface mb-1">Quiz Time</h1>
+          <p className="text-base text-on-surface-variant font-body">
+            Question {currentIndex + 1} of {totalQuestions}
+          </p>
         </div>
-      )}
-
-      {/* Fill-in-the-blank: text input */}
-      {qType === "fill_blank" && (
-        <div className="flex flex-col items-center gap-3">
-          <input
-            type="text"
-            value={typedAnswer}
-            onChange={(e) => setTypedAnswer(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && hasAnswer) handleSubmit(); }}
-            placeholder="Type your answer..."
-            className="w-full max-w-md border border-slate-200 rounded-xl p-3 text-center text-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            autoFocus
-          />
-          <p className="text-xs text-slate-400">Hint: the missing word is a noun, verb, or adjective</p>
+        <div className="relative flex items-center justify-center">
+          <svg className="w-20 h-20" viewBox="0 0 100 100" style={{transform: "rotate(-90deg)"}}>
+            <circle cx="50" cy="50" r="40" fill="transparent" stroke="#e5eeff" strokeWidth="8" />
+            <circle cx="50" cy="50" r="40" fill="transparent" stroke="#2a14b4" strokeWidth="8"
+              strokeLinecap="round" strokeDasharray={progressCircumference} strokeDashoffset={progressOffset}
+              style={{transition: "stroke-dashoffset 0.5s ease-out"}} />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="font-heading text-xl font-bold text-primary">{progress}%</span>
+          </div>
         </div>
-      )}
+      </header>
 
-      <div className="flex justify-center mt-6">
-        <button onClick={handleSubmit} disabled={!hasAnswer}
-          className={`px-6 py-2 font-semibold rounded-lg
-            ${hasAnswer ? "bg-emerald-500 hover:bg-emerald-600 text-white" : "bg-slate-300 text-slate-600 cursor-not-allowed"}`}>
-          {currentIndex === totalQuestions - 1 ? "Finish" : "Next"}
-        </button>
+      <div className="bento-grid">
+        {/* Question Card */}
+        <div className={`glass-card rounded-3xl p-6 md:p-8 ${qType === "fill_blank" || qType === "true_false" ? "col-span-12 md:col-span-8" : "col-span-12 md:col-span-8"}`}>
+          <div className="mb-6">
+            <span className={`font-heading text-xs font-semibold px-3 py-1 rounded-full ${typeBadge.cls}`}>{typeBadge.label}</span>
+            <h2 className="font-heading text-xl md:text-2xl font-semibold mt-3 text-on-surface">{currentQuestion.question}</h2>
+          </div>
+
+          {/* MCQ / True-False: radio options */}
+          {(qType === "true_false" || qType === "mcq") && (
+            <div className={`grid gap-3 ${qType === "true_false" ? "grid-cols-2" : "grid-cols-1"}`}>
+              {currentQuestion.options.map((option, index) => (
+                <label key={index}
+                  className={`group relative flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                    selectedAnswer === option
+                      ? "border-primary bg-primary-container/10"
+                      : "border-surface-variant hover:border-primary-container"
+                  }`}>
+                  <input type="radio" name="quiz" value={option}
+                    checked={selectedAnswer === option}
+                    onChange={() => setSelectedAnswer(option)}
+                    className="w-5 h-5 text-primary border-outline focus:ring-primary" />
+                  <span className={`ml-4 text-base font-body ${selectedAnswer === option ? "text-primary font-semibold" : "text-on-surface group-hover:text-primary"} transition-colors`}>
+                    {option}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {/* Fill-in-the-blank */}
+          {qType === "fill_blank" && (
+            <div className="relative">
+              <input
+                type="text" value={typedAnswer}
+                onChange={(e) => setTypedAnswer(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && hasAnswer) handleSubmit(); }}
+                placeholder="Enter your answer..."
+                className="w-full bg-surface-container-low border-2 border-outline-variant rounded-xl p-4 focus:border-primary focus:ring-0 transition-all font-body text-base"
+                autoFocus
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Side: Topic + Progress */}
+        <div className="col-span-12 md:col-span-4 flex flex-col gap-4">
+          {currentQuestion.topic && (
+            <div className="glass-card rounded-3xl p-5 border-primary/10">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="material-symbols-outlined text-primary" style={{fontVariationSettings: "'FILL' 1"}}>auto_awesome</span>
+                <span className="font-heading text-xs font-semibold text-primary">Topic</span>
+              </div>
+              <p className="text-sm text-on-surface-variant font-body italic">{currentQuestion.topic}</p>
+            </div>
+          )}
+          <div className="glass-card rounded-3xl p-5">
+            <h3 className="font-heading text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-2">Progress</h3>
+            <div className="h-2 bg-surface-variant rounded-full overflow-hidden">
+              <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
+            </div>
+            <p className="text-xs text-on-surface-variant mt-2 font-body">{currentIndex + 1} of {totalQuestions} completed</p>
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <div className="col-span-12 flex justify-between items-center mt-4">
+          <div></div>
+          <button onClick={handleSubmit} disabled={!hasAnswer}
+            className={`px-8 py-3 rounded-xl font-heading text-sm font-semibold transition-all active:scale-95 ${
+              hasAnswer
+                ? "bg-primary text-white shadow-lg hover:shadow-xl"
+                : "bg-surface-container text-on-surface-variant cursor-not-allowed"
+            }`}>
+            {currentIndex === totalQuestions - 1 ? "Complete Quiz" : "Next Question"}
+          </button>
+        </div>
       </div>
     </div>
   );

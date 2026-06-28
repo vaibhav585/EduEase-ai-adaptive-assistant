@@ -67,48 +67,73 @@ const Chatbot: React.FC<ChatbotProps> = ({ onSentiment, gradeLevel, readingDiffi
   };
 
   return (
-    <div className="fixed bottom-20 left-4 w-80 h-96 bg-white rounded-lg shadow-xl flex flex-col p-4 z-50">
-      <div className="flex-1 overflow-y-auto mb-4 p-2 border rounded bg-gray-50">
+    <div className="fixed bottom-24 right-4 w-96 max-w-[calc(100vw-2rem)] max-h-[500px] z-[9998] flex flex-col bg-white rounded-3xl shadow-2xl border border-white/20 overflow-hidden animate-fade-in">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-primary to-primary-container p-4 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center">
+          <span className="material-symbols-outlined text-white text-[20px]" style={{fontVariationSettings: "'FILL' 1"}}>auto_awesome</span>
+        </div>
+        <div>
+          <p className="font-heading text-sm font-semibold text-white">EduEase Assistant</p>
+          <p className="text-[10px] text-white/70 font-body">AI-powered learning support</p>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-surface-bright min-h-[200px] max-h-[340px]">
+        {messages.length === 0 && (
+          <div className="text-center py-8">
+            <span className="material-symbols-outlined text-4xl text-primary/20 block mb-2" style={{fontVariationSettings: "'FILL' 1"}}>chat_bubble</span>
+            <p className="text-xs text-on-surface-variant font-body">Ask me anything about your reading material</p>
+          </div>
+        )}
         {messages.map((msg, index) => (
-          <div
-            key={index}
-            className={`mb-2 ${msg.sender === 'user' ? 'text-right' : 'text-left'}`}
-          >
-            <span
-              className={`inline-block p-2 rounded-lg ${
-                msg.sender === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-800'
-              }`}
-            >
+          <div key={index} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[80%] px-4 py-2.5 text-sm font-body leading-relaxed ${
+              msg.sender === 'user'
+                ? 'bg-primary text-white rounded-2xl rounded-br-md'
+                : 'bg-surface-container text-on-surface rounded-2xl rounded-bl-md'
+            }`}>
               {msg.text}
-            </span>
+            </div>
           </div>
         ))}
         {loading && (
-          <div className="text-left mb-2">
-            <span className="inline-block p-2 rounded-lg bg-gray-300 text-gray-800">
-              Typing...
-            </span>
+          <div className="flex justify-start">
+            <div className="bg-surface-container text-on-surface-variant rounded-2xl rounded-bl-md px-4 py-2.5 text-sm font-body">
+              <span className="inline-flex gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-on-surface-variant/40 animate-bounce" style={{animationDelay: "0ms"}}></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-on-surface-variant/40 animate-bounce" style={{animationDelay: "150ms"}}></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-on-surface-variant/40 animate-bounce" style={{animationDelay: "300ms"}}></span>
+              </span>
+            </div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
-      <div className="flex">
-        <input
-          type="text"
-          className="flex-1 border rounded-l-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="Type your message..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={handleKeyPress}
-          disabled={loading}
-        />
-        <button
-          className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-r-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          onClick={handleSend}
-          disabled={loading}
-        >
-          Send
-        </button>
+
+      {/* Input */}
+      <div className="p-3 border-t border-outline-variant/20 bg-white">
+        <div className="flex items-center gap-2 bg-surface-container-low rounded-xl px-3 py-1 border border-outline-variant/30 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+          <input
+            type="text"
+            className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none text-sm font-body text-on-surface placeholder:text-on-surface-variant/50 py-2"
+            placeholder="Type your message..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={handleKeyPress}
+            disabled={loading}
+          />
+          <button
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all flex-shrink-0 ${
+              input.trim() ? 'bg-primary text-white hover:bg-primary-container active:scale-95' : 'bg-surface-container text-on-surface-variant'
+            }`}
+            onClick={handleSend}
+            disabled={loading || !input.trim()}
+          >
+            <span className="material-symbols-outlined text-[18px]">send</span>
+          </button>
+        </div>
       </div>
     </div>
   );

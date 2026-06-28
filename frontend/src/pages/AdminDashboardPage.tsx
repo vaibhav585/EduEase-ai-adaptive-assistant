@@ -69,115 +69,189 @@ const AdminDashboardPage: React.FC = () => {
   const teacherEmailMap: Record<string, string> = {};
   teachers.forEach((t) => { teacherEmailMap[t.uid] = t.email; });
 
+  const roleIcon = (r: string) =>
+    r === "admin" ? "admin_panel_settings" : r === "teacher" ? "person" : "school";
+  const roleBadge = (r: string) =>
+    r === "admin"
+      ? "bg-tertiary-fixed text-on-tertiary-fixed-variant"
+      : r === "teacher"
+      ? "bg-primary-fixed text-on-primary-fixed-variant"
+      : "bg-surface-variant text-primary";
+
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold text-indigo-800">Admin Dashboard</h1>
-          <p className="text-slate-600 mt-1">Manage users, roles, and system access</p>
-        </div>
-        <button onClick={handleLogout}
-          className="px-4 py-2 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-sm font-semibold shadow">
-          Log Out
-        </button>
-      </div>
-
-      {/* KPI */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="rounded-2xl bg-white shadow-md p-5 border border-slate-100">
-          <p className="text-sm text-slate-500">Students</p>
-          <p className="text-3xl font-semibold text-indigo-600 mt-1">{students.length}</p>
-        </div>
-        <div className="rounded-2xl bg-white shadow-md p-5 border border-slate-100">
-          <p className="text-sm text-slate-500">Teachers</p>
-          <p className="text-3xl font-semibold text-emerald-600 mt-1">{teachers.length}</p>
-        </div>
-        <div className="rounded-2xl bg-white shadow-md p-5 border border-slate-100">
-          <p className="text-sm text-slate-500">Admins</p>
-          <p className="text-3xl font-semibold text-amber-600 mt-1">{admins.length}</p>
-        </div>
-      </div>
-
-      {/* Create User Form */}
-      <div className="bg-white rounded-2xl shadow-md p-6 border border-slate-100">
-        <h2 className="text-xl font-semibold text-slate-800 mb-4">Create New User</h2>
-        <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input type="email" required placeholder="Email address" value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="border border-slate-200 rounded-lg p-2" />
-          <input type="password" required minLength={6} placeholder="Password (min 6 chars)" value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="border border-slate-200 rounded-lg p-2" />
-          <select value={role} onChange={(e) => setRole(e.target.value as "student" | "teacher")}
-            className="border border-slate-200 rounded-lg p-2">
-            <option value="student">Student</option>
-            <option value="teacher">Teacher</option>
-          </select>
-          {role === "student" && (
-            <>
-              <select value={gradeLevel} onChange={(e) => setGradeLevel(e.target.value)}
-                className="border border-slate-200 rounded-lg p-2">
-                <option value="">Grade Level (optional)</option>
-                {["1","2","3","4","5","6","7","8"].map((g) => (
-                  <option key={g} value={g}>Grade {g}</option>
-                ))}
-              </select>
-              <select value={teacherId} onChange={(e) => setTeacherId(e.target.value)}
-                className="border border-slate-200 rounded-lg p-2 md:col-span-2">
-                <option value="">Assign Teacher (optional)</option>
-                {teachers.map((t) => (
-                  <option key={t.uid} value={t.uid}>{t.email}</option>
-                ))}
-              </select>
-            </>
-          )}
-          <button type="submit" disabled={creating}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg md:col-span-2">
-            {creating ? "Creating..." : "Create User"}
-          </button>
-        </form>
-        {message && (
-          <p className={`mt-3 text-sm ${message.includes("Created") ? "text-emerald-600" : "text-red-500"}`}>
-            {message}
-          </p>
-        )}
-      </div>
-
-      {/* User Roster */}
-      <div className="bg-white rounded-2xl shadow-md p-6 border border-slate-100">
-        <h2 className="text-xl font-semibold text-slate-800 mb-4">All Users</h2>
-        {loading ? (
-          <p className="text-slate-500 py-4 text-center">Loading...</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 text-slate-600">
-                  <th className="p-3 text-left">Email</th>
-                  <th className="p-3 text-left">Role</th>
-                  <th className="p-3 text-left">Grade</th>
-                  <th className="p-3 text-left">Assigned Teacher</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {users.map((u) => (
-                  <tr key={u.uid} className="hover:bg-slate-50">
-                    <td className="p-3 font-medium">{u.email}</td>
-                    <td className="p-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                        u.role === "admin" ? "bg-amber-100 text-amber-700" :
-                        u.role === "teacher" ? "bg-emerald-100 text-emerald-700" :
-                        "bg-indigo-100 text-indigo-700"
-                      }`}>{u.role}</span>
-                    </td>
-                    <td className="p-3">{u.grade_level || "—"}</td>
-                    <td className="p-3">{u.teacher_id ? (teacherEmailMap[u.teacher_id] || u.teacher_id) : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+    <div className="min-h-screen bg-surface-bright animate-fade-in">
+      <div className="max-w-[1440px] mx-auto px-4 md:px-12 py-8 space-y-8">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="font-heading text-sm font-semibold text-primary uppercase tracking-widest">Administration</span>
+            <h1 className="font-heading text-3xl md:text-4xl font-bold text-on-surface mt-1">Dashboard</h1>
           </div>
-        )}
+          <button onClick={handleLogout}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-error text-on-error text-sm font-semibold shadow-lg hover:shadow-xl transition-all active:scale-95">
+            <span className="material-symbols-outlined text-[18px]">logout</span>
+            Log Out
+          </button>
+        </div>
+
+        {/* Bento KPI Grid */}
+        <div className="bento-grid">
+          <div className="col-span-12 md:col-span-4 glass-card p-8 rounded-3xl flex flex-col justify-between overflow-hidden relative group">
+            <div className="z-10">
+              <p className="font-heading text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-2">Total Students</p>
+              <h2 className="font-heading text-4xl font-bold text-primary">{students.length}</h2>
+              <div className="flex items-center gap-1.5 text-on-tertiary-fixed-variant mt-3">
+                <span className="material-symbols-outlined text-[18px]">school</span>
+                <span className="text-xs font-medium">Active learners</span>
+              </div>
+            </div>
+            <div className="absolute -right-8 -bottom-8 opacity-10 group-hover:opacity-20 transition-opacity">
+              <span className="material-symbols-outlined text-[160px]" style={{fontVariationSettings: "'FILL' 1"}}>groups</span>
+            </div>
+          </div>
+          <div className="col-span-12 md:col-span-4 glass-card p-8 rounded-3xl flex flex-col justify-between overflow-hidden relative group">
+            <div className="z-10">
+              <p className="font-heading text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-2">Total Teachers</p>
+              <h2 className="font-heading text-4xl font-bold text-primary">{teachers.length}</h2>
+              <div className="flex items-center gap-1.5 text-on-tertiary-fixed-variant mt-3">
+                <span className="material-symbols-outlined text-[18px]">person</span>
+                <span className="text-xs font-medium">Educators on platform</span>
+              </div>
+            </div>
+            <div className="absolute -right-8 -bottom-8 opacity-10 group-hover:opacity-20 transition-opacity">
+              <span className="material-symbols-outlined text-[160px]" style={{fontVariationSettings: "'FILL' 1"}}>school</span>
+            </div>
+          </div>
+          <div className="col-span-12 md:col-span-4 glass-card p-8 rounded-3xl flex flex-col justify-between overflow-hidden relative group bg-primary-container/10 border-primary/20">
+            <div className="z-10">
+              <div className="flex justify-between items-start">
+                <p className="font-heading text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-2">System Admins</p>
+                <span className="flex h-3 w-3 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-on-tertiary-fixed-variant opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-tertiary-fixed-dim"></span>
+                </span>
+              </div>
+              <h2 className="font-heading text-4xl font-bold text-primary">{admins.length}</h2>
+            </div>
+          </div>
+        </div>
+
+        {/* Grid: Form + Roster */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Create User Form */}
+          <section className="lg:col-span-4 space-y-6">
+            <div className="glass-card p-8 rounded-3xl flex flex-col gap-5">
+              <header>
+                <span className="font-heading text-xs font-semibold text-primary uppercase tracking-widest block mb-1">Administration</span>
+                <h3 className="font-heading text-xl font-semibold text-on-surface">Create New User</h3>
+              </header>
+              <form onSubmit={handleCreate} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="font-heading text-xs font-semibold text-on-surface-variant">Select User Role</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setRole("teacher")}
+                      className={`border rounded-xl py-2.5 flex flex-col items-center gap-1 transition-all active:scale-95 ${role === "teacher" ? "border-primary bg-primary/5" : "border-outline-variant/30 hover:border-primary"}`}>
+                      <span className={`material-symbols-outlined ${role === "teacher" ? "text-primary" : "text-on-surface-variant"}`}>person</span>
+                      <span className={`text-xs font-medium ${role === "teacher" ? "text-primary" : ""}`}>Teacher</span>
+                    </button>
+                    <button type="button" onClick={() => setRole("student")}
+                      className={`border rounded-xl py-2.5 flex flex-col items-center gap-1 transition-all active:scale-95 ${role === "student" ? "border-primary bg-primary/5" : "border-outline-variant/30 hover:border-primary"}`}>
+                      <span className={`material-symbols-outlined ${role === "student" ? "text-primary" : "text-on-surface-variant"}`}>school</span>
+                      <span className={`text-xs font-medium ${role === "student" ? "text-primary" : ""}`}>Student</span>
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="font-heading text-xs font-semibold text-on-surface-variant">Email Address</label>
+                  <input type="email" required placeholder="user@eduease.edu" value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="font-heading text-xs font-semibold text-on-surface-variant">Password</label>
+                  <input type="password" required minLength={6} placeholder="Min 6 characters" value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all" />
+                </div>
+                {role === "student" && (
+                  <>
+                    <div className="space-y-1.5">
+                      <label className="font-heading text-xs font-semibold text-on-surface-variant">Grade Level</label>
+                      <select value={gradeLevel} onChange={(e) => setGradeLevel(e.target.value)}
+                        className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all">
+                        <option value="">Select grade...</option>
+                        {["1","2","3","4","5","6","7","8"].map((g) => (
+                          <option key={g} value={g}>Grade {g}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5 pt-3 border-t border-outline-variant/30">
+                      <label className="font-heading text-xs font-semibold text-on-surface-variant">Assign Teacher</label>
+                      <select value={teacherId} onChange={(e) => setTeacherId(e.target.value)}
+                        className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all">
+                        <option value="">Select a teacher...</option>
+                        {teachers.map((t) => (
+                          <option key={t.uid} value={t.uid}>{t.email}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-on-surface-variant italic">Students must be assigned to a teacher upon creation.</p>
+                    </div>
+                  </>
+                )}
+                <button type="submit" disabled={creating}
+                  className="w-full bg-primary-container text-white font-heading text-sm font-semibold py-3 rounded-xl hover:bg-primary transition-colors active:scale-[0.98] shadow-lg shadow-primary/20">
+                  {creating ? "Creating..." : "Create Account"}
+                </button>
+              </form>
+              {message && (
+                <p className={`text-sm font-medium ${message.includes("Created") ? "text-tertiary-fixed-dim" : "text-error"}`}>
+                  {message}
+                </p>
+              )}
+            </div>
+          </section>
+
+          {/* User Roster */}
+          <section className="lg:col-span-8">
+            <div className="glass-card p-8 rounded-3xl h-full flex flex-col">
+              <header className="flex justify-between items-center mb-6">
+                <h3 className="font-heading text-xl font-semibold text-on-surface">User Roster</h3>
+              </header>
+              {loading ? (
+                <p className="text-on-surface-variant text-center py-8">Loading...</p>
+              ) : (
+                <div className="space-y-3 overflow-y-auto max-h-[600px] pr-2">
+                  {users.map((u) => (
+                    <div key={u.uid} className="flex items-center justify-between p-4 rounded-xl bg-surface-container-low border border-outline-variant/10 hover:border-primary/20 transition-all group">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center ${u.role === "admin" ? "bg-tertiary/10" : u.role === "teacher" ? "bg-primary-fixed" : "bg-surface-variant"}`}>
+                          <span className={`material-symbols-outlined ${u.role === "admin" ? "text-tertiary" : "text-primary"}`}>{roleIcon(u.role)}</span>
+                        </div>
+                        <div>
+                          <p className="font-heading text-sm font-semibold text-on-surface">{u.email}</p>
+                          <p className="text-xs text-on-surface-variant">
+                            {u.grade_level ? `Grade ${u.grade_level}` : ""}
+                            {u.teacher_id ? ` · ${teacherEmailMap[u.teacher_id] || "Assigned"}` : ""}
+                            {!u.grade_level && !u.teacher_id ? "—" : ""}
+                          </p>
+                        </div>
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${roleBadge(u.role)}`}>
+                        {u.role}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {/* Atmospheric background */}
+      <div className="fixed top-0 left-0 w-full h-full pointer-events-none -z-10 overflow-hidden">
+        <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[60%] bg-primary/5 rounded-full blur-[120px] motion-safe:animate-pulse"></div>
+        <div className="absolute bottom-[-10%] left-[-5%] w-[30%] h-[50%] bg-surface-variant/40 rounded-full blur-[120px]"></div>
       </div>
     </div>
   );

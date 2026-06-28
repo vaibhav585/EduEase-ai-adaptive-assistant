@@ -1,0 +1,348 @@
+{
+  "info": {
+    "name": "AI Adaptive Learning Assistant",
+    "description": "Complete API collection for the AI-powered neurodivergent learning platform.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{bearer_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "bearer_token",
+      "value": ""
+    },
+    {
+      "key": "student_id",
+      "value": "STUDENT_UID_HERE"
+    }
+  ],
+  "item": [
+    {
+      "name": "Public",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/",
+              "host": ["{{base_url}}"],
+              "path": [""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Student - Content",
+      "item": [
+        {
+          "name": "Upload PDF",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bearer_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/upload-pdf/",
+              "host": ["{{base_url}}"],
+              "path": ["upload-pdf", ""]
+            }
+          }
+        },
+        {
+          "name": "Add Content (Text)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bearer_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "text",
+                  "value": "Photosynthesis is the process by which green plants convert sunlight into chemical energy.",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/add-content/",
+              "host": ["{{base_url}}"],
+              "path": ["add-content", ""]
+            }
+          }
+        },
+        {
+          "name": "Get My Content",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bearer_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/get-content/",
+              "host": ["{{base_url}}"],
+              "path": ["get-content", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Student - AI Processing",
+      "item": [
+        {
+          "name": "Simplify Text (Grade 3, Easy)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bearer_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Photosynthesis is the biochemical process whereby chloroplasts in plant cells convert radiant solar energy into chemical energy stored in glucose molecules.\",\n  \"grade_level\": \"3\",\n  \"reading_difficulty\": \"easy\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/simplify-text/",
+              "host": ["{{base_url}}"],
+              "path": ["simplify-text", ""]
+            }
+          }
+        },
+        {
+          "name": "Chatbot (with session_id)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bearer_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"What is photosynthesis?\",\n  \"session_id\": \"sess-demo-001\",\n  \"grade_level\": \"3\",\n  \"reading_difficulty\": \"easy\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/chatbot/",
+              "host": ["{{base_url}}"],
+              "path": ["chatbot", ""]
+            }
+          }
+        },
+        {
+          "name": "Generate Quiz",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bearer_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Plants use sunlight to make food. This process is called photosynthesis. The leaves absorb light energy. Carbon dioxide enters through tiny holes called stomata.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/generate-quiz/",
+              "host": ["{{base_url}}"],
+              "path": ["generate-quiz", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Student - Analytics Logging",
+      "item": [
+        {
+          "name": "Log Quiz Results",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bearer_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"score\": 7,\n  \"total_questions\": 10,\n  \"wrong_topics\": [\"photosynthesis\", \"stomata\", \"chlorophyll\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/analytics/log-quiz/",
+              "host": ["{{base_url}}"],
+              "path": ["analytics", "log-quiz", ""]
+            }
+          }
+        },
+        {
+          "name": "Log Session Telemetry",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bearer_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": \"sess-demo-001\",\n  \"average_focus_score\": 0.78,\n  \"frustration_triggers\": 3\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/analytics/log-session/",
+              "host": ["{{base_url}}"],
+              "path": ["analytics", "log-session", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Teacher - Dashboard",
+      "item": [
+        {
+          "name": "Get Student Roster",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bearer_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/teacher/students",
+              "host": ["{{base_url}}"],
+              "path": ["teacher", "students"]
+            }
+          }
+        },
+        {
+          "name": "Get Student Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bearer_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/teacher/analytics/{{student_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["teacher", "analytics", "{{student_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Security Tests",
+      "item": [
+        {
+          "name": "Upload PDF - No Auth (expect 401)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/upload-pdf/",
+              "host": ["{{base_url}}"],
+              "path": ["upload-pdf", ""]
+            }
+          }
+        },
+        {
+          "name": "Teacher Roster - Student Token (expect 403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bearer_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/teacher/students",
+              "host": ["{{base_url}}"],
+              "path": ["teacher", "students"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

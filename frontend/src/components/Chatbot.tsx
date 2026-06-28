@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../services/api';
+import { auth } from '../services/firebase';
 import type { Sentiment } from './Eye';
 
 interface Message {
@@ -9,13 +10,20 @@ interface Message {
 
 interface ChatbotProps {
   onSentiment?: (sentiment: Sentiment) => void;
+  gradeLevel?: string | null;
+  readingDifficulty?: string | null;
 }
 
-const Chatbot: React.FC<ChatbotProps> = ({ onSentiment }) => {
+const Chatbot: React.FC<ChatbotProps> = ({ onSentiment, gradeLevel, readingDifficulty }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const sessionId = useMemo(() => {
+    const uid = auth.currentUser?.uid ?? 'anon';
+    return `${uid}_${Date.now()}`;
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -32,7 +40,12 @@ const Chatbot: React.FC<ChatbotProps> = ({ onSentiment }) => {
     setLoading(true);
 
     try {
-      const response = await api.post('/chatbot/', { text: input });
+      const response = await api.post('/chatbot/', {
+        text: input,
+        session_id: sessionId,
+        grade_level: gradeLevel ?? null,
+        reading_difficulty: readingDifficulty ?? null,
+      });
       const botMessage: Message = { text: response.data.response, sender: 'bot' };
       setMessages((prevMessages) => [...prevMessages, botMessage]);
       if (response.data.sentiment && onSentiment) {

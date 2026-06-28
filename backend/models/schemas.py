@@ -26,9 +26,10 @@ class TranslateResponse(BaseModel):
     translated_text: str
 
 class ChatbotRequest(BaseModel):
-    message: str
-    user_id: str
+    text: str
     session_id: str
+    grade_level: Optional[str] = None
+    reading_difficulty: Optional[str] = None
 
 class TurnSentiment(BaseModel):
     frustration_score: float = Field(ge=0.0, le=1.0)
@@ -36,5 +37,17 @@ class TurnSentiment(BaseModel):
 
 
 class ChatbotResponse(BaseModel):
-    reply: str
+    response: str
     sentiment: TurnSentiment
+
+
+class QuizResultLog(BaseModel):
+    score: int = Field(ge=0)
+    total_questions: int = Field(ge=1)
+    wrong_topics: List[str] = Field(default_factory=list)
+
+
+class SessionTelemetryLog(BaseModel):
+    session_id: str
+    average_focus_score: float = Field(ge=0.0, le=1.0)
+    frustration_triggers: int = Field(ge=0)

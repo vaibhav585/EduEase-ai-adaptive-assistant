@@ -1,14 +1,16 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import Eye from '../components/Eye';
 import type { Sentiment } from '../components/Eye';
+import Chatbot from '../components/Chatbot';
 
 const LearningPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { text } = location.state || { text: '' };
+  const { text, grade_level, reading_difficulty } = location.state || { text: '', grade_level: null, reading_difficulty: null };
   const [latestSentiment, setLatestSentiment] = React.useState<Sentiment | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const [words, setWords] = React.useState<string[]>([]);
   const [sentences, setSentences] = React.useState<string[][]>([]);
@@ -21,7 +23,7 @@ const LearningPage: React.FC = () => {
 
   React.useEffect(() => {
     if (text) {
-      api.post('/simplify-text/', { text })
+      api.post('/simplify-text/', { text, grade_level: grade_level ?? null, reading_difficulty: reading_difficulty ?? null })
         .then((response) => {
           const simplified = response.data.simplified_text;
           setSimplifiedText(simplified);
@@ -31,7 +33,7 @@ const LearningPage: React.FC = () => {
         })
         .catch((error) => console.error('Error simplifying text:', error));
     }
-  }, [text]);
+  }, [text, grade_level, reading_difficulty]);
 
   React.useEffect(() => {
     if (sentences.length > 0) {
@@ -140,95 +142,114 @@ const LearningPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6">
-      {/* Focus Tracker */}
-      <div className="lg:w-1/3 w-full">
-        <div className="bg-white rounded-2xl shadow-md p-4 border border-slate-100">
-          <h2 className="text-lg font-semibold text-slate-800 mb-3 text-center">👁️ Focus Tracker</h2>
-          <Eye
-            targetId="reading-area"
-            sentiment={latestSentiment}
-            onFocusChange={(isFocused) => {
-              if (!isFocused && isPlaying) setIsPlaying(false);
-            }}
-          />
+    <div className="relative">
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Focus Tracker */}
+        <div className="lg:w-1/3 w-full">
+          <div className="bg-white rounded-2xl shadow-md p-4 border border-slate-100">
+            <h2 className="text-lg font-semibold text-slate-800 mb-3 text-center">👁️ Focus Tracker</h2>
+            <Eye
+              targetId="reading-area"
+              sentiment={latestSentiment}
+              onFocusChange={(isFocused) => {
+                if (!isFocused && isPlaying) setIsPlaying(false);
+              }}
+            />
+          </div>
         </div>
-      </div>
 
-      {/* Reading Module */}
-      <div className="lg:w-2/3 w-full">
-        <div className="bg-white rounded-2xl shadow-md p-6 border border-slate-100">
-          <h2 className="text-2xl font-semibold text-indigo-800 mb-4 text-center">📘 Learning Module</h2>
+        {/* Reading Module */}
+        <div className="lg:w-2/3 w-full">
+          <div className="bg-white rounded-2xl shadow-md p-6 border border-slate-100">
+            <h2 className="text-2xl font-semibold text-indigo-800 mb-4 text-center">📘 Learning Module</h2>
 
-          {/* Controls */}
-          <div className="mb-5 flex flex-wrap justify-center items-center gap-4">
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-slate-600">Highlight Mode:</label>
-              <select
-                value={highlightMode}
-                onChange={(e) => setHighlightMode(e.target.value as 'word' | 'sentence')}
-                className="p-2 border border-slate-200 rounded-lg bg-white"
+            {/* Controls */}
+            <div className="mb-5 flex flex-wrap justify-center items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-slate-600">Highlight Mode:</label>
+                <select
+                  value={highlightMode}
+                  onChange={(e) => setHighlightMode(e.target.value as 'word' | 'sentence')}
+                  className="p-2 border border-slate-200 rounded-lg bg-white"
+                >
+                  <option value="word">Word by Word</option>
+                  <option value="sentence">Sentence by Sentence</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-3">
+                <label htmlFor="wpm-slider" className="text-sm text-slate-600">WPM: {wpm}</label>
+                <input
+                  id="wpm-slider"
+                  type="range"
+                  min="50"
+                  max="500"
+                  step="10"
+                  value={wpm}
+                  onChange={(e) => setWpm(Number(e.target.value))}
+                  className="w-48 accent-indigo-600"
+                />
+              </div>
+            </div>
+
+            {/* Reading Area */}
+            <div
+              id="reading-area"
+              role="region"
+              aria-label="Reading area"
+              aria-live="polite"
+              aria-atomic="false"
+              className="bg-indigo-50/60 rounded-xl p-4 border border-indigo-100"
+            >
+              {renderContent()}
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-wrap justify-center gap-3 mt-5">
+              <button
+                onClick={handlePlayPause}
+                className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 px-4 rounded-lg"
               >
-                <option value="word">Word by Word</option>
-                <option value="sentence">Sentence by Sentence</option>
-              </select>
+                {isPlaying ? 'Pause' : 'Play'}
+              </button>
+              <button
+                onClick={handleReset}
+                className="bg-rose-500 hover:bg-rose-600 text-white font-semibold py-2 px-4 rounded-lg"
+              >
+                Reset
+              </button>
+              <button
+                onClick={handleSpeak}
+                className="bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2 px-4 rounded-lg"
+              >
+                Speak
+              </button>
+              <button
+                onClick={navigateToQuiz}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg"
+              >
+                Take a Quiz
+              </button>
             </div>
-            <div className="flex items-center gap-3">
-              <label htmlFor="wpm-slider" className="text-sm text-slate-600">WPM: {wpm}</label>
-              <input
-                id="wpm-slider"
-                type="range"
-                min="50"
-                max="500"
-                step="10"
-                value={wpm}
-                onChange={(e) => setWpm(Number(e.target.value))}
-                className="w-48 accent-indigo-600"
-              />
-            </div>
-          </div>
-
-          {/* Reading Area */}
-          <div
-            id="reading-area"
-            role="region"
-            aria-label="Reading area"
-            aria-live="polite"
-            aria-atomic="false"
-            className="bg-indigo-50/60 rounded-xl p-4 border border-indigo-100"
-          >
-            {renderContent()}
-          </div>
-
-          {/* Actions */}
-          <div className="flex flex-wrap justify-center gap-3 mt-5">
-            <button
-              onClick={handlePlayPause}
-              className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 px-4 rounded-lg"
-            >
-              {isPlaying ? 'Pause' : 'Play'}
-            </button>
-            <button
-              onClick={handleReset}
-              className="bg-rose-500 hover:bg-rose-600 text-white font-semibold py-2 px-4 rounded-lg"
-            >
-              Reset
-            </button>
-            <button
-              onClick={handleSpeak}
-              className="bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2 px-4 rounded-lg"
-            >
-              Speak
-            </button>
-            <button
-              onClick={navigateToQuiz}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg"
-            >
-              Take a Quiz
-            </button>
           </div>
         </div>
       </div>
+
+      {/* Chatbot toggle + panel */}
+      <button
+        onClick={() => setChatOpen((prev) => !prev)}
+        aria-label={chatOpen ? 'Close assistant' : 'Open assistant'}
+        className="fixed bottom-4 left-4 z-50 w-12 h-12 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-xl shadow-lg flex items-center justify-center motion-safe:transition-transform hover:scale-110"
+      >
+        {chatOpen ? '✕' : '💬'}
+      </button>
+
+      {chatOpen && (
+        <Chatbot
+          onSentiment={setLatestSentiment}
+          gradeLevel={grade_level}
+          readingDifficulty={reading_difficulty}
+        />
+      )}
     </div>
   );
 };

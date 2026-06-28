@@ -43,14 +43,25 @@ const QuizPage: React.FC = () => {
     const currentQuestion = questions[currentIndex];
     const isCorrect = selectedAnswer === currentQuestion.answer;
 
-    if (isCorrect) setScore((prev) => prev + 1);
-    else if (currentQuestion.topic) setWrongTopics((prev) => [...prev, currentQuestion.topic]);
+    if (isCorrect) {
+      setScore((prev) => prev + 1);
+    } else {
+      setWrongTopics((prev) => [...prev, currentQuestion.answer]);
+    }
 
-    if (currentIndex < TOTAL_QUESTIONS - 1) {
+    const isFinal = currentIndex >= TOTAL_QUESTIONS - 1;
+    if (!isFinal) {
       setCurrentIndex((prev) => prev + 1);
       setSelectedAnswer(null);
     } else {
+      const finalScore = score + (isCorrect ? 1 : 0);
+      const finalWrong = isCorrect ? wrongTopics : [...wrongTopics, currentQuestion.answer];
       setIsQuizCompleted(true);
+      api.post("/analytics/log-quiz/", {
+        score: finalScore,
+        total_questions: Math.min(questions.length, TOTAL_QUESTIONS),
+        wrong_topics: [...new Set(finalWrong)],
+      }).catch(() => {});
     }
   };
 

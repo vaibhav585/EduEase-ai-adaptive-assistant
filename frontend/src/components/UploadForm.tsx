@@ -1,11 +1,34 @@
 
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../services/firebase';
 import api from '../services/api';
 
 const UploadForm: React.FC = () => {
   const [file, setFile] = React.useState<File | null>(null);
+  const [gradeLevel, setGradeLevel] = React.useState<string | null>(null);
+  const [readingDifficulty, setReadingDifficulty] = React.useState<string | null>(null);
+  const [user] = useAuthState(auth);
   const navigate = useNavigate();
+
+  React.useEffect(() => {
+    if (!user) return;
+    const fetchProfile = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (snap.exists()) {
+          const data = snap.data();
+          setGradeLevel(data.grade_level ?? null);
+          setReadingDifficulty(data.reading_difficulty ?? null);
+        }
+      } catch {
+        // profile fields missing — defaults will apply downstream
+      }
+    };
+    fetchProfile();
+  }, [user]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -14,7 +37,6 @@ const UploadForm: React.FC = () => {
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    console.log('handleSubmit called'); // Added for debugging
     e.preventDefault();
     if (file) {
       const formData = new FormData();
@@ -25,12 +47,16 @@ const UploadForm: React.FC = () => {
             'Content-Type': 'multipart/form-data',
           },
         });
-        navigate('/learning', { state: { text: response.data.text } });
+        navigate('/learning', {
+          state: {
+            text: response.data.text,
+            grade_level: gradeLevel,
+            reading_difficulty: readingDifficulty,
+          },
+        });
       } catch (error) {
         console.error('Error uploading file:', error);
       }
-    } else {
-      console.warn('No file selected for upload.'); // Added for debugging
     }
   };
 

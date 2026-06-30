@@ -1,220 +1,234 @@
-# AI Adaptive Learning Assistant for Neurodivergent Students
+# EduEase — AI Adaptive Learning Assistant
 
-A secure, AI-powered assistive reading workspace designed for neurodivergent children (ADHD, Autism, Dyslexia, Auditory Processing Disorders). Educators monitor student progress in real time through a live telemetry dashboard backed by Firebase and Recharts.
+An assistive reading workspace built for students with neurodivergent learning needs (ADHD, Dyslexia, Autism, Auditory Processing Disorders). Students upload documents and receive grade-appropriate simplified text, an AI chatbot grounded in the uploaded content, and auto-generated quizzes. A face-based gaze tracker monitors attention and delivers non-intrusive prompts when focus drifts. Teachers and admins access live analytics through role-gated dashboards.
 
-## Architecture Overview
+---
+
+## Architecture
 
 ```
-Frontend (React + Vite + Tailwind)        Backend (FastAPI + Python 3.13)
-+---------------------------------+       +------------------------------------+
-|  Firebase Auth (login/reg)      |       |  verify_user  (token validation)   |
-|  UploadForm  --POST /upload-pdf/------->|  verify_role  (RBAC middleware)    |
-|  LearningPage -POST /simplify-text/---->|  Gemini 2.5 Flash LLM             |
-|  Chatbot     --POST /chatbot/---------->|  FAISS + ParentDocumentRetriever   |
-|  Eye.tsx     <-- sentiment prop --------|  CrossEncoder reranker             |
-|  QuizPage    --POST /generate-quiz/---->|  spaCy NLP quiz generation         |
-|  TeacherDash --GET /teacher/*---------->|  Firestore aggregation queries     |
-+---------------------------------+       +------------------------------------+
-                                                        |
-                                          +-------------+----------------+
-                                          |  Google Cloud Firestore      |
-                                          |  +-- users/{uid}             |
-                                          |  +-- content/{id}            |
-                                          |  +-- quiz_results/{id}       |
-                                          |  +-- telemetry_sessions/{id} |
-                                          +------------------------------+
+Frontend (React + Vite + TypeScript)       Backend (FastAPI + Python)
++-----------------------------------+      +------------------------------------+
+|  Firebase Auth                    |      |  verify_user  — token validation   |
+|  UploadForm  → POST /upload-pdf/  |----->|  verify_role  — RBAC middleware    |
+|  LearningPage → POST /simplify-text/---->|  Gemini 2.0 Flash (LLM)          |
+|  Chatbot     → POST /chatbot/     |----->|  FAISS + ParentDocumentRetriever  |
+|  Eye.tsx     ← sentiment prop     |<-----|  CrossEncoder reranker             |
+|  QuizPage    → POST /generate-quiz/----->|  spaCy NLP (quiz fallback)        |
+|  TeacherDash → GET /teacher/*     |----->|  Firestore aggregation queries    |
++-----------------------------------+      +------------------------------------+
+                                                         |
+                                           +-------------+--------------+
+                                           |  Google Cloud Firestore    |
+                                           |  users / content /         |
+                                           |  quiz_results / telemetry  |
+                                           +----------------------------+
 ```
 
-## Core Features
+---
 
-### 1. Adaptive AI Text Simplification
+## Features
 
-Powered by Gemini 2.5 Flash with a persona-driven prompt system. The LLM adopts the role of a special education teacher and applies grade-specific linguistic constraints:
+### Adaptive Text Simplification
 
-| Grade | Max Words/Sentence | Profile |
-|-------|-------------------|---------|
-| 1-2   | 8                 | Age 6-8, one-syllable vocabulary preferred |
-| 3-4   | 10                | Age 8-10, concrete everyday vocabulary |
-| 5-6   | 12                | Age 10-12, common two-syllable words allowed |
-| 7-8   | 15                | Age 12-14, grade-appropriate academic terms |
+Gemini 2.0 Flash rewrites uploaded text using a grade-specific prompt profile. The model acts as a special education teacher and applies hard constraints on sentence length, vocabulary complexity, and sentence structure (no passive voice, no idioms, no multi-clause sentences).
 
-Each level supports three difficulty tiers: **Easy**, **Medium**, **Hard**. No metaphors, idioms, passive voice, or multi-idea sentences are permitted. Falls back to spaCy lemmatization if the LLM call fails.
+| Grade | Max words per sentence | Target age |
+|-------|----------------------|------------|
+| 1–2   | 8                    | 6–8        |
+| 3–4   | 10                   | 8–10       |
+| 5–6   | 12                   | 10–12      |
+| 7–8   | 15                   | 12–14      |
 
-### 2. RAG Chatbot with Sentiment Analysis
+Each grade level supports three difficulty tiers. If the LLM call fails, the system falls back to spaCy lemmatization.
 
-- **Ingestion**: Uploaded PDFs and manual text are split into parent chunks (~800 tokens) and child chunks (~150 tokens) using LangChain's `ParentDocumentRetriever`.
-- **Embedding**: Google `text-embedding-004` encodes child chunks into a FAISS vector index persisted to disk.
-- **Retrieval**: Queries fetch 12 candidates, filter by student `grade_level`/`reading_difficulty` metadata, then rerank with `BAAI/bge-reranker-base` cross-encoder down to the top 4.
-- **Generation**: The top parent chunks are injected as context into a per-session `ConversationChain` with `ConversationBufferMemory` (TTL: 1 hour, max 256 sessions).
-- **Sentiment**: A secondary Gemini call scores every exchange with `frustration_score` (0.0-1.0) and `suggested_action` ("continue" | "simplify" | "offer_break").
+### RAG Chatbot
 
-### 3. Eye-Tracking Focus Detection & Cognitive Overlays
+PDFs are split into parent chunks (~3200 characters) and child chunks (~600 characters) using LangChain's `ParentDocumentRetriever`. Child chunks are embedded with `text-embedding-004` and stored in a FAISS index persisted to disk. At query time, 12 candidates are retrieved, filtered by the student's `grade_level` and `reading_difficulty` metadata, then reranked to the top 4 using a `BAAI/bge-reranker-base` cross-encoder. The top parent chunks provide context to a per-session `ConversationChain` with a 1-hour TTL (max 256 concurrent sessions).
 
-WebGazer.js tracks gaze position via the webcam. If no gaze data arrives for 1.5 seconds, the system marks the student as distracted and pauses the paced reader.
+A secondary Gemini call scores every chatbot exchange with a `frustration_score` (0.0–1.0) and a `suggested_action` (`continue`, `simplify`, or `offer_break`). This score is forwarded to the focus tracker to trigger contextual banners.
 
-When chatbot sentiment returns `frustration_score > 0.7` or `suggested_action == "offer_break"`, the Eye component triggers an animated alert banner with a "Read Aloud" TTS button. All animations use `motion-safe:` Tailwind prefixes to respect `prefers-reduced-motion`.
+### Gaze-Based Focus Tracking
 
-### 4. Quiz Generation & Telemetry
+The focus tracker runs MediaPipe FaceLandmarker at ~15 fps against the webcam feed. It measures head orientation by computing how far the nose tip deviates from the eye midpoint horizontally (yaw) and vertically (pitch). If the head is turned or tilted beyond a threshold in any direction for more than four seconds, the session is marked as distracted and a banner is shown. Sustained eye closure (both eyes closed for more than 500 ms) is treated the same way; normal blinks are ignored.
 
-spaCy NLP extracts nouns, verbs, and adjectives from simplified text to generate fill-in-the-blank questions with 4 options each (capped at 10 questions). On completion, the frontend logs results to `POST /analytics/log-quiz/` including the `wrong_topics` array (the answer keywords the student missed).
+Focus is restored automatically within about one second of the user looking back at the camera. No calibration is needed and there is no regression model that can drift — the signal is derived entirely from face geometry.
 
-### 5. Live Teacher Dashboard
+### Quiz Generation
 
-Teachers see a dynamic Recharts-powered dashboard pulling from Firestore:
-- **Student Roster**: Fetched from `/teacher/students` (RBAC-protected, teacher-only).
-- **Quiz Accuracy LineChart**: Score percentages over time per student.
-- **Focus & Frustration Timeline**: Dual-axis LineChart (focus % vs frustration trigger count).
-- **Weak Topics BarChart**: Horizontal bar ranking most-missed keywords.
+Gemini generates three question types from the simplified text: multiple choice, true/false, and fill-in-the-blank. spaCy provides a fallback if the LLM call fails. On completion, the frontend posts results to `/analytics/log-quiz/` including the `wrong_topics` array for per-topic accuracy tracking.
 
-## Security Architecture
+### Teacher and Admin Dashboards
+
+Teachers see a Recharts dashboard with quiz accuracy over time, a dual-axis focus and frustration timeline, and a weak-topics bar chart. The data is pulled from Firestore through RBAC-protected endpoints that scope each teacher's view to their own students.
+
+Admins can view all users and create new teacher or student accounts.
+
+---
+
+## Security
 
 | Layer | Mechanism |
 |-------|-----------|
-| Authentication | Firebase Admin SDK `verify_id_token` on every protected route |
-| Authorization | `verify_role("teacher")` checks Firestore `/users/{uid}.role` |
-| Content isolation | `/get-content/` filters by `uid`; students only see their own uploads |
+| Authentication | Firebase ID tokens verified on every protected route via Google's public signing keys |
+| Authorization | `verify_role` checks Firestore `users/{uid}.role` before granting access |
+| Content isolation | `/get-content/` and analytics endpoints filter by `uid` |
 | Input guardrails | Regex scanner blocks prompt injection patterns and masks PII (email, phone, zip) |
-| Output guardrails | Regex scanner blocks toxic phrases; fails safe to a static fallback message |
+| Output guardrails | Regex scanner blocks toxic phrases; falls back to a safe static response |
 | PDF validation | 5 MB size limit, 20-page cap, PyPDF2 parse validation |
 
-## Application Data Flow
+---
 
-```
-Student uploads PDF
-       |
-       v
-POST /upload-pdf/ -- PyPDF2 extraction -- FAISS parent-child ingestion
-       |
-       v
-POST /simplify-text/ -- Gemini profile-matched rewrite -- Paced reader UI
-       |                                                        |
-       v                                                        v
-POST /chatbot/ -- RAG retrieval -- Gemini response ---- Eye.tsx sentiment banner
-       |                                                        |
-       v                                                        v
-POST /generate-quiz/ -- spaCy NLP -- Interactive quiz -- POST /analytics/log-quiz/
-                                                                |
-                                                                v
-                                                POST /analytics/log-session/
-                                                                |
-                                                                v
-                                          GET /teacher/students -- GET /teacher/analytics/{id}
-                                                                |
-                                                                v
-                                                   Recharts dashboard (LineChart + BarChart)
-```
+## Tech Stack
 
-## Quick Start
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS |
+| Backend | FastAPI, Python 3.10+, Pydantic |
+| LLM | Gemini 2.0 Flash (text-embedding-004 for embeddings) |
+| Retrieval | LangChain, FAISS, sentence-transformers (BAAI/bge-reranker-base) |
+| NLP | spaCy (en_core_web_sm) |
+| Gaze tracking | MediaPipe Tasks Vision (FaceLandmarker) |
+| Auth | Firebase Authentication + Firebase Admin SDK |
+| Database | Google Cloud Firestore |
+| Analytics | Recharts |
+| Accessibility | ARIA live regions, Web Speech API (TTS + STT), motion-safe animations |
 
-### Prerequisites
+---
 
-- Python 3.13+
-- Node.js 18+
-- Firebase project with Firestore enabled
-- Google Cloud API key with Gemini access
-- `serviceAccountKey.json` in `backend/`
+## Prerequisites
+
+- Python 3.10 or later
+- Node.js 18 or later
+- A Firebase project with Authentication and Firestore enabled
+- A Google AI API key with access to Gemini 2.0 Flash
+- A Firebase service account key file (`serviceAccountKey.json`)
+
+---
+
+## Setup
 
 ### Backend
 
 ```bash
 cd backend
-cp .env.example .env          # Set GOOGLE_API_KEY
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 python -m spacy download en_core_web_sm
-uvicorn app:app --reload --port 8000
 ```
+
+Copy `.env.example` to `.env` and fill in your API key:
+
+```
+GOOGLE_API_KEY=your_gemini_api_key
+```
+
+Place `serviceAccountKey.json` (downloaded from Firebase Console → Project Settings → Service Accounts) in the `backend/` directory.
 
 ### Frontend
 
 ```bash
 cd frontend
-cp .env.example .env          # Set VITE_API_URL and VITE_FIREBASE_* keys
 npm install
-npm run dev                   # http://localhost:5173
 ```
 
-### Environment Variables
+Copy `.env.example` to `.env` and fill in your Firebase project credentials:
 
-**Backend** (`backend/.env`):
-```
-GOOGLE_API_KEY=your_google_api_key
-```
-
-**Frontend** (`frontend/.env`):
 ```
 VITE_API_URL=http://localhost:8000
-VITE_FIREBASE_API_KEY=...
-VITE_FIREBASE_AUTH_DOMAIN=...
-VITE_FIREBASE_PROJECT_ID=...
-VITE_FIREBASE_STORAGE_BUCKET=...
-VITE_FIREBASE_MESSAGING_SENDER_ID=...
-VITE_FIREBASE_APP_ID=...
-VITE_FIREBASE_MEASUREMENT_ID=...
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
+VITE_FIREBASE_STORAGE_BUCKET=
+VITE_FIREBASE_MESSAGING_SENDER_ID=
+VITE_FIREBASE_APP_ID=
+VITE_FIREBASE_MEASUREMENT_ID=
 ```
+
+---
+
+## Running
+
+Start the backend:
+
+```bash
+cd backend
+uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
+Start the frontend in a separate terminal:
+
+```bash
+cd frontend
+npm run dev
+```
+
+The app is available at `http://localhost:5173`.
+
+On first startup the backend seeds demo accounts into Firebase Authentication and Firestore:
+
+| Role    | Email              | Password    |
+|---------|--------------------|-------------|
+| Admin   | admin@test.com     | admin@123   |
+| Teacher | teacher1@test.com  | teacher@123 |
+| Student | student1@test.com  | student@123 |
+
+---
 
 ## Project Structure
 
 ```
-ai-assistant-neurodivergent/
-+-- backend/
-|   +-- app.py                 # FastAPI application (all routes + middleware)
-|   +-- config.py              # Environment variable loading
-|   +-- firebase_config.py     # Firebase Admin SDK initialization
-|   +-- ingestion.py           # FAISS vector store + ParentDocumentRetriever
-|   +-- models/
-|   |   +-- schemas.py         # Pydantic request/response models
-|   +-- data/
-|   |   +-- faiss_index/       # Persisted FAISS vector index
-|   +-- .env.example
-|   +-- requirements.txt
-+-- frontend/
-|   +-- src/
-|   |   +-- components/
-|   |   |   +-- AuthForm.tsx       # Login/register with role selection
-|   |   |   +-- Chatbot.tsx        # AI chatbot with sentiment callback
-|   |   |   +-- Charts.tsx         # Recharts (LineChart + BarChart)
-|   |   |   +-- ContentForm.tsx    # Text/PDF content management
-|   |   |   +-- ControlsBar.tsx    # Reader controls
-|   |   |   +-- Eye.tsx            # WebGazer eye tracking + sentiment banners
-|   |   |   +-- Layout.tsx         # Navigation shell
-|   |   |   +-- RoleGate.tsx       # Client-side RBAC guard
-|   |   |   +-- UploadForm.tsx     # PDF upload with profile forwarding
-|   |   +-- pages/
-|   |   |   +-- LearningPage.tsx       # Paced reader + chatbot + eye tracker
-|   |   |   +-- QuizPage.tsx           # Interactive quiz with telemetry logging
-|   |   |   +-- TeacherDashboardPage.tsx # Live analytics dashboard
-|   |   |   +-- DashboardPage.tsx      # Student navigation hub
-|   |   +-- services/
-|   |   |   +-- api.ts            # Axios client with auth interceptor
-|   |   |   +-- firebase.ts       # Firebase SDK initialization
-|   |   +-- App.tsx               # React Router with RoleGate guards
-|   +-- .env.example
-|   +-- package.json
-+-- README.md
-+-- API_DOCUMENTATION.md
-+-- postman_collection.json
+.
+├── backend/
+│   ├── app.py                  # All FastAPI routes and middleware
+│   ├── firebase_config.py      # Firebase Admin SDK init, token verification
+│   ├── ingestion.py            # FAISS ingestion and ParentDocumentRetriever
+│   ├── config.py               # Environment variable loading
+│   ├── models/schemas.py       # Pydantic request and response models
+│   ├── data/faiss_index/       # Persisted FAISS vector index
+│   ├── requirements.txt
+│   └── .env.example
+└── frontend/
+    ├── src/
+    │   ├── components/
+    │   │   ├── Eye.tsx          # MediaPipe gaze tracker
+    │   │   ├── Chatbot.tsx      # AI chatbot with sentiment callback
+    │   │   ├── Charts.tsx       # Recharts dashboard charts
+    │   │   ├── UploadForm.tsx   # PDF upload
+    │   │   ├── RoleGate.tsx     # Client-side RBAC guard
+    │   │   └── Layout.tsx       # Navigation shell
+    │   ├── pages/
+    │   │   ├── LearningPage.tsx         # Reader, chatbot, and gaze tracker
+    │   │   ├── QuizPage.tsx             # Interactive quiz with telemetry
+    │   │   ├── TeacherDashboardPage.tsx # Live analytics
+    │   │   └── AdminDashboardPage.tsx   # User management
+    │   └── services/
+    │       ├── api.ts           # Axios client with Firebase auth interceptor
+    │       └── firebase.ts      # Firebase SDK initialisation
+    ├── index.html
+    ├── package.json
+    └── .env.example
 ```
 
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 18, TypeScript, Vite, Tailwind CSS, Recharts |
-| Backend | FastAPI, Python 3.13, Pydantic v2 |
-| AI/ML | Gemini 2.5 Flash, LangChain, FAISS, sentence-transformers, spaCy |
-| Auth | Firebase Authentication + Firebase Admin SDK |
-| Database | Google Cloud Firestore |
-| Eye Tracking | WebGazer.js |
-| Accessibility | `motion-safe:` animations, `aria-live` regions, `aria-current` tracking, Web Speech API TTS |
+---
 
 ## Firestore Collections
 
-| Collection | Fields | Written By |
-|------------|--------|-----------|
-| `users/{uid}` | `email`, `role`, `grade_level`, `reading_difficulty` | Frontend (registration) |
-| `content/{id}` | `text`, `uid` | `POST /add-content/` |
-| `quiz_results/{id}` | `student_id`, `score`, `total_questions`, `wrong_topics`, `timestamp` | `POST /analytics/log-quiz/` |
-| `telemetry_sessions/{id}` | `student_id`, `session_id`, `average_focus_score`, `frustration_triggers`, `timestamp` | `POST /analytics/log-session/` |
+| Collection | Key fields |
+|------------|-----------|
+| `users/{uid}` | `email`, `role`, `grade_level`, `reading_difficulty` |
+| `content/{id}` | `text`, `uid` |
+| `quiz_results/{id}` | `student_id`, `score`, `total_questions`, `wrong_topics`, `timestamp` |
+| `telemetry_sessions/{id}` | `student_id`, `session_id`, `average_focus_score`, `frustration_triggers`, `timestamp` |
+
+---
+
+## API Reference
+
+See [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) for the full endpoint reference, or import [postman_collection.json](./postman_collection.json) directly into Postman.
+
+---
 
 ## License
 

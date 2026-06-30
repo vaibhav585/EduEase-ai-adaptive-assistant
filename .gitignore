@@ -15,5 +15,8 @@ __pycache__/
 node_modules/
 frontend/node_modules/
 
+# Build output (contains baked-in env vars)
+frontend/dist/
+
 # Secrets
 backend/serviceAccountKey.json

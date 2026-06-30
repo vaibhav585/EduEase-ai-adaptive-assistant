@@ -147,7 +147,6 @@ const LearningPage: React.FC = () => {
         {/* Focus Tracker */}
         <div className="w-full lg:w-1/3 flex flex-col gap-6">
           <Eye
-            targetId="reading-area"
             sentiment={latestSentiment}
             onFocusChange={(isFocused) => {
               if (!isFocused && isPlaying) setIsPlaying(false);

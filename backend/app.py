@@ -7,7 +7,7 @@ import io
 import json
 import re
 import spacy
-from firebase_config import db
+from firebase_config import db, verify_firebase_token
 import random
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
@@ -192,15 +192,30 @@ async def verify_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Invalid token")
     token = header[7:]
     try:
-        decoded = await run_in_threadpool(firebase_auth.verify_id_token, token)
+        decoded = await run_in_threadpool(verify_firebase_token, token)
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
+    # Firebase tokens use 'sub' for UID; normalise to 'uid' for the rest of the app
+    if "uid" not in decoded:
+        decoded = {**decoded, "uid": decoded.get("sub", "")}
     return decoded
+
+
+# Maps known demo email addresses to their intended roles.
+# Auto-provisioning uses this so teacher/admin logins work on first access
+# even when their Firestore profile doesn't exist yet.
+_DEMO_ROLE_MAP: dict[str, str] = {
+    "admin@test.com": "admin",
+    "teacher1@test.com": "teacher",
+    "teacher2@test.com": "teacher",
+    "teacher3@test.com": "teacher",
+}
 
 
 def verify_role(required_role: str):
     async def _check(user: dict = Depends(verify_user)) -> dict:
         uid = user.get("uid")
+        email = user.get("email", "")
         if not uid:
             raise HTTPException(status_code=401, detail="Invalid token")
         try:
@@ -208,7 +223,13 @@ def verify_role(required_role: str):
         except Exception:
             raise HTTPException(status_code=500, detail="Failed to verify role")
         if not user_doc.exists:
-            raise HTTPException(status_code=403, detail="User profile not found")
+            # Auto-provision: first login creates a profile with the correct role
+            role = _DEMO_ROLE_MAP.get(email, "student")
+            db.collection("users").document(uid).set({"email": email, "role": role})
+            if role != required_role:
+                raise HTTPException(status_code=403, detail="Insufficient permissions")
+            user["role"] = role
+            return user
         role = user_doc.to_dict().get("role", "")
         if role != required_role:
             raise HTTPException(status_code=403, detail="Insufficient permissions")

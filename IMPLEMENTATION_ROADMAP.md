@@ -8,6 +8,40 @@ against files that are placeholders.
 
 ---
 
+> [!IMPORTANT]
+> ## Outstanding — `master` / `main` branch integration
+>
+> Everything in this roadmap (Phase 0–6, all built and pushed) sits on the GitHub repo's **`master`**
+> branch. The repo's actual **default branch is `main`**, and it is a completely independent
+> history — `git merge-base master origin/main` returns nothing; there is no common ancestor.
+>
+> `main` is your teammate's (`theshreyasethi`) separate rewrite — a RAG pipeline with cross-encoder
+> re-ranking, input/output safety guardrails, live teacher telemetry, more quiz question types, and
+> MediaPipe FaceLandmarker replacing WebGazer — which you (`vaibhav585`) then continued directly
+> (WebGazer→MediaPipe fix, README rewrite, `.gitignore` cleanup, last commit 2026-07-01).
+>
+> **This is real overlap, not just a stale branch to discard.** Both branches independently solved
+> some of the same problems differently:
+>
+> | | `master` (this roadmap, Phase 0–6) | `main` (teammate's rewrite) |
+> |---|---|---|
+> | Telemetry | Built from scratch in Phase 0 | Already has "live teacher telemetry" |
+> | Chatbot | Fixed a shared-memory-across-users bug, kept simple | Has a RAG pipeline + safety guardrails |
+> | Gaze tracking | Still WebGazer | Already swapped to MediaPipe FaceLandmarker |
+> | Disability adaptation, DASE, voice nav, deaf/blind support | Built across Phase 0–6 | Not present |
+>
+> **Decision (2026-09-15):** leave both branches as they are for now — nothing is at risk either way,
+> both are pushed. The plan going forward: integrate the two, keeping the best of each, and likely
+> reapplying this roadmap's Phase 0–6 changes on top of `main` rather than the reverse, since `main`
+> is the branch you and your teammate have continued treating as current. This needs a design
+> decision by whoever understands both codebases (which telemetry system survives, which chatbot
+> approach, which gaze-tracking method) — not a mechanical `git merge`.
+>
+> Full context: see the conversation this decision came from, or ask to have this section expanded
+> into its own integration plan when you are ready to start it.
+
+---
+
 ## 0. Reality check — what actually exists today
 
 | Plan doc assumes | Reality |

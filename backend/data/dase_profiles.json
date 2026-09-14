@@ -1,0 +1,232 @@
+{
+  "_readme": [
+    "DASE weight profiles. Config, not code \u2014 teachers may override per student and",
+    "the override is logged (roadmap 2.2).",
+    "",
+    "Weights here are the FULL intended set, including parameters that are not yet",
+    "measurable (VOICE_Q and NAV_EFF arrive in Phase 3, VIS_ENG in Phase 5, WRIT_EXP",
+    "and FRUST are unimplemented). The engine renormalizes over whatever it can",
+    "actually compute for a given session, so declaring intent here costs nothing and",
+    "the parameter switches itself on when its data source lands.",
+    "",
+    "Weights need not sum to 1 \u2014 they are normalized at scoring time.",
+    "",
+    "IMPORTANT: these are literature-informed, NOT empirically validated. Any claim",
+    "made from them must say so. Run scripts/run_ablation.py after changing them."
+  ],
+  "_parameters": {
+    "ACC": "Raw accuracy: correct / answered",
+    "ADJ_ACC": "Accuracy after confidence-weighted discount of attention-lapse errors",
+    "COMP": "Accuracy on higher-difficulty (comprehension) items",
+    "TIME_EFF": "Response time against the student's OWN baseline, not a cohort mean",
+    "ATT_SPAN": "Mean face-presence ratio. NOT gaze-on-content. Null without webcam consent",
+    "CONSIST": "1 - normalized variance of performance across same-difficulty items",
+    "EFFORT": "Engagement: answer changes, revisits, re-reads, time invested",
+    "LRN_VEL": "Slope of correctness over the session sequence",
+    "TASK_COMP": "Fraction of started sessions that were completed",
+    "READ_FL": "Reading fluency: words-per-minute against comprehension",
+    "VOICE_Q": "PHASE 3 \u2014 quality of spoken responses",
+    "NAV_EFF": "PHASE 3 \u2014 navigation efficiency for screen-reader/voice users",
+    "VIS_ENG": "PHASE 5 \u2014 engagement with visual content",
+    "WRIT_EXP": "NOT IMPLEMENTED \u2014 written expression quality",
+    "FRUST": "NOT IMPLEMENTED \u2014 frustration index"
+  },
+  "attentionLapseCredit": 0.75,
+  "representThreshold": 0.45,
+  "profiles": {
+    "default": {
+      "rationale": "Balanced. Used when no disability is declared.",
+      "weights": {
+        "ACC": 0.3,
+        "COMP": 0.15,
+        "EFFORT": 0.15,
+        "LRN_VEL": 0.15,
+        "TIME_EFF": 0.1,
+        "CONSIST": 0.1,
+        "TASK_COMP": 0.05
+      }
+    },
+    "adhd": {
+      "rationale": "Raw accuracy is less meaningful than accuracy after attention-lapse errors are discounted. Attention span and effort weighted heavily to reward persistence rather than punish distractibility.",
+      "weights": {
+        "ACC": 0.15,
+        "ADJ_ACC": 0.28,
+        "ATT_SPAN": 0.15,
+        "EFFORT": 0.22,
+        "TASK_COMP": 0.1,
+        "LRN_VEL": 0.1,
+        "CONSIST": 0.05,
+        "FRUST": 0.05
+      },
+      "diagnosticOnly": [
+        "ATT_SPAN"
+      ]
+    },
+    "dyslexia": {
+      "rationale": "Comprehension matters far more than raw accuracy, which is depressed by decoding errors rather than misunderstanding. Reading fluency captures the speed/comprehension trade-off.",
+      "weights": {
+        "ACC": 0.1,
+        "COMP": 0.32,
+        "READ_FL": 0.15,
+        "EFFORT": 0.18,
+        "LRN_VEL": 0.15,
+        "TIME_EFF": 0.1,
+        "CONSIST": 0.05,
+        "FRUST": 0.05
+      },
+      "diagnosticOnly": [
+        "READ_FL"
+      ]
+    },
+    "autism": {
+      "rationale": "Autistic students often excel at consistency and pattern recognition. These strengths should be surfaced rather than hidden behind open-ended question failures.",
+      "weights": {
+        "ACC": 0.15,
+        "CONSIST": 0.2,
+        "PATTERN": 0.2,
+        "EFFORT": 0.1,
+        "LRN_VEL": 0.1,
+        "TIME_EFF": 0.1,
+        "TASK_COMP": 0.1,
+        "FRUST": 0.05
+      }
+    },
+    "blind": {
+      "rationale": "Voice interaction and navigation efficiency capture how effectively content is reached. Time efficiency is de-emphasized because screen-reader navigation is inherently slower. ATT_SPAN is deliberately absent \u2014 webcam attention tracking is meaningless here.",
+      "weights": {
+        "ACC": 0.2,
+        "VOICE_Q": 0.15,
+        "NAV_EFF": 0.15,
+        "EFFORT": 0.15,
+        "COMP": 0.15,
+        "LRN_VEL": 0.1,
+        "TIME_EFF": 0.05,
+        "FRUST": 0.05
+      },
+      "diagnosticOnly": [
+        "TIME_EFF"
+      ]
+    },
+    "low_vision": {
+      "rationale": "As blind, but time efficiency retains a little more weight since some visual access remains.",
+      "weights": {
+        "ACC": 0.2,
+        "COMP": 0.2,
+        "EFFORT": 0.15,
+        "NAV_EFF": 0.15,
+        "LRN_VEL": 0.15,
+        "TIME_EFF": 0.1,
+        "FRUST": 0.05
+      },
+      "diagnosticOnly": [
+        "TIME_EFF"
+      ]
+    },
+    "deaf": {
+      "rationale": "Visual engagement and written expression are the key channels. Comprehension is weighted because reading is the primary input channel, and reading proficiency is often below grade level for reasons unrelated to subject understanding.",
+      "weights": {
+        "ACC": 0.2,
+        "VIS_ENG": 0.2,
+        "WRIT_EXP": 0.15,
+        "COMP": 0.15,
+        "EFFORT": 0.1,
+        "LRN_VEL": 0.1,
+        "CONSIST": 0.05,
+        "FRUST": 0.05
+      }
+    },
+    "hard_of_hearing": {
+      "rationale": "As deaf, but with less weight on visual engagement since partial audio access remains.",
+      "weights": {
+        "ACC": 0.25,
+        "COMP": 0.2,
+        "VIS_ENG": 0.15,
+        "EFFORT": 0.15,
+        "LRN_VEL": 0.15,
+        "CONSIST": 0.1
+      }
+    },
+    "dyscalculia": {
+      "rationale": "Number-concept difficulty depresses accuracy on numeric items independently of reasoning ability. Effort and learning velocity carry the signal; time efficiency is de-emphasized because number processing is slower.",
+      "weights": {
+        "ACC": 0.15,
+        "COMP": 0.2,
+        "EFFORT": 0.2,
+        "LRN_VEL": 0.2,
+        "CONSIST": 0.15,
+        "TIME_EFF": 0.05,
+        "FRUST": 0.05
+      },
+      "diagnosticOnly": [
+        "TIME_EFF"
+      ]
+    },
+    "dysgraphia": {
+      "rationale": "Written output under-represents knowledge. Until WRIT_EXP separates knowledge from expression (Phase 4.2), weight comprehension and effort.",
+      "weights": {
+        "ACC": 0.2,
+        "COMP": 0.2,
+        "EFFORT": 0.2,
+        "LRN_VEL": 0.15,
+        "WRIT_EXP": 0.15,
+        "TIME_EFF": 0.1
+      }
+    },
+    "anxiety": {
+      "rationale": "Test anxiety depresses both accuracy and speed without reflecting understanding. Learning velocity and task completion are weighted heavily because improvement over time and simply finishing are the meaningful signals. TIME_EFF is near-zero: timing pressure is the stressor.",
+      "weights": {
+        "ACC": 0.15,
+        "LRN_VEL": 0.25,
+        "EFFORT": 0.2,
+        "TASK_COMP": 0.15,
+        "COMP": 0.15,
+        "CONSIST": 0.05,
+        "TIME_EFF": 0.05
+      },
+      "diagnosticOnly": [
+        "TIME_EFF"
+      ]
+    },
+    "intellectual": {
+      "rationale": "Progress and persistence matter more than absolute accuracy. Task completion and learning velocity dominate; raw accuracy against grade-level material is the least informative signal.",
+      "weights": {
+        "ACC": 0.1,
+        "EFFORT": 0.25,
+        "LRN_VEL": 0.25,
+        "TASK_COMP": 0.2,
+        "CONSIST": 0.15,
+        "TIME_EFF": 0.05
+      },
+      "diagnosticOnly": [
+        "TIME_EFF"
+      ]
+    },
+    "motor": {
+      "rationale": "Input speed is limited by physical access, not cognition, so TIME_EFF is minimized. Otherwise close to default.",
+      "weights": {
+        "ACC": 0.3,
+        "COMP": 0.2,
+        "EFFORT": 0.15,
+        "LRN_VEL": 0.15,
+        "TASK_COMP": 0.15,
+        "TIME_EFF": 0.05
+      },
+      "diagnosticOnly": [
+        "TIME_EFF"
+      ]
+    }
+  },
+  "_diagnosticOnlyNote": [
+    "Parameters listed in a profile's `diagnosticOnly` are COMPUTED and REPORTED",
+    "(they appear on the radar chart and in the error/parameter breakdown) but are",
+    "EXCLUDED from the weighted composite score.",
+    "",
+    "Rule: a parameter must not be scored in a profile if a MORE SEVERE form of that",
+    "same disability would mechanically lower it, independent of how much the student",
+    "learned. Scoring such a parameter penalises the student for having the condition.",
+    "",
+    "Found by scripts/run_ablation.py: the ADHD profile originally weighted ATT_SPAN",
+    "at 0.15, which ranked a distracted-but-capable learner LAST among five archetypes",
+    "under the very profile meant to support them."
+  ]
+}

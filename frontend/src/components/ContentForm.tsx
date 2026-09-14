@@ -1,26 +1,33 @@
-
 import React from 'react';
 import axios from 'axios';
+import { AlertCircle, CheckCircle2, FileText, Inbox, Loader2, Send } from 'lucide-react';
+
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 interface ContentItem {
   id: string;
   text: string;
 }
 
+/**
+ * Was hardcoded to http://localhost:8000 in three places, had two debug
+ * console.log calls, and used raw green-100/red-100 outside the app's token
+ * set. Fixed alongside the icon/consistency pass.
+ */
 const ContentForm: React.FC = () => {
   const [text, setText] = React.useState('');
   const [file, setFile] = React.useState<File | null>(null);
-  const [contentList, setContentList] = React.useState<ContentItem[]>([]); // New state for content list
-  const [loadingContent, setLoadingContent] = React.useState(true); // New loading state for fetching content
-  const [fetchingError, setFetchingError] = React.useState<string | null>(null); // New error state for fetching content
-  const [submissionMessage, setSubmissionMessage] = React.useState<string | null>(null); // For success/error messages after submission
-  const [isSubmitting, setIsSubmitting] = React.useState(false); // For loading indicator during submission
+  const [contentList, setContentList] = React.useState<ContentItem[]>([]);
+  const [loadingContent, setLoadingContent] = React.useState(true);
+  const [fetchingError, setFetchingError] = React.useState<string | null>(null);
+  const [submissionMessage, setSubmissionMessage] = React.useState<{ text: string; ok: boolean } | null>(null);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const fetchContent = async () => {
     setLoadingContent(true);
     setFetchingError(null);
     try {
-      const response = await axios.get('http://localhost:8000/get-content/');
+      const response = await axios.get(`${API_URL}/get-content/`);
       setContentList(response.data.content);
     } catch (error) {
       console.error('Error fetching content:', error);
@@ -31,122 +38,161 @@ const ContentForm: React.FC = () => {
   };
 
   React.useEffect(() => {
-    fetchContent(); // Fetch content on component mount
+    fetchContent();
   }, []);
-
-  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setText(e.target.value);
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setFile(e.target.files[0]);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmissionMessage(null);
-    setIsSubmitting(true);
 
+    if (!text && !file) {
+      setSubmissionMessage({ text: 'Please provide text or upload a file.', ok: false });
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
       if (text) {
         const formData = new FormData();
         formData.append('text', text);
-        const response = await axios.post('http://localhost:8000/add-content/', formData);
-        console.log('Content added:', response.data);
-        setSubmissionMessage('Content added successfully!');
-        setText(''); // Clear text field
-        fetchContent(); // Refresh content list
+        await axios.post(`${API_URL}/add-content/`, formData);
+        setSubmissionMessage({ text: 'Content added successfully.', ok: true });
+        setText('');
+        await fetchContent();
       }
       if (file) {
-        const formData = new FormData();
-        formData.append('file', file);
-        const uploadResponse = await axios.post('http://localhost:8000/upload-pdf/', formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
+        const uploadData = new FormData();
+        uploadData.append('file', file);
+        const uploadResponse = await axios.post(`${API_URL}/upload-pdf/`, uploadData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
         });
-        const addContentFormData = new FormData();
-        addContentFormData.append('text', uploadResponse.data.text);
-        const addContentResponse = await axios.post('http://localhost:8000/add-content/', addContentFormData);
-        console.log('Content added:', addContentResponse.data);
-        setSubmissionMessage('File content added successfully!');
-        setFile(null); // Clear file input
-        // Reset file input element value
-        const fileInput = document.getElementById('file') as HTMLInputElement;
+
+        const addContentData = new FormData();
+        addContentData.append('text', uploadResponse.data.text);
+        await axios.post(`${API_URL}/add-content/`, addContentData);
+
+        setSubmissionMessage({ text: 'File content added successfully.', ok: true });
+        setFile(null);
+        const fileInput = document.getElementById('file') as HTMLInputElement | null;
         if (fileInput) fileInput.value = '';
-        fetchContent(); // Refresh content list
-      }
-      if (!text && !file) {
-        setSubmissionMessage('Please provide text or upload a file.');
+        await fetchContent();
       }
     } catch (error) {
       console.error('Error during submission:', error);
-      setSubmissionMessage('Failed to add content. Please try again.');
+      setSubmissionMessage({ text: 'Failed to add content. Please try again.', ok: false });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div className="mb-4">
-        <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="text">
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <div>
+        <label className="block text-slate-700 text-sm font-semibold mb-1.5" htmlFor="text">
           Copy-paste text
         </label>
         <textarea
-          className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+          className="w-full rounded-control border border-slate-300 py-2 px-3 text-slate-700 leading-relaxed
+                     focus:outline-none focus:ring-2 focus:ring-primary-500"
           id="text"
-          rows={10}
-          placeholder="Enter text here"
+          rows={8}
+          placeholder="Paste a passage here…"
           value={text}
-          onChange={handleTextChange}
+          onChange={(e) => setText(e.target.value)}
         />
       </div>
-      <div className="mb-4">
-        <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="file">
+
+      <div>
+        <label className="block text-slate-700 text-sm font-semibold mb-1.5" htmlFor="file">
           Or upload a file
         </label>
         <input
-          className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+          className="w-full rounded-control border border-slate-300 py-2 px-3 text-slate-700
+                     file:mr-3 file:py-1.5 file:px-3 file:rounded-control file:border-0
+                     file:bg-primary-50 file:text-primary-700 file:font-medium
+                     focus:outline-none focus:ring-2 focus:ring-primary-500"
           id="file"
           type="file"
-          onChange={handleFileChange}
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
       </div>
-      <div className="flex items-center justify-between">
-        <button
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-          type="submit"
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? 'Submitting...' : 'Submit'}
-        </button>
-      </div>
+
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-60
+                   text-white font-semibold py-2.5 px-5 rounded-control min-h-[44px]"
+      >
+        {isSubmitting ? (
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+        ) : (
+          <Send className="h-4 w-4" aria-hidden="true" />
+        )}
+        {isSubmitting ? 'Submitting…' : 'Submit'}
+      </button>
 
       {submissionMessage && (
-        <div className={`mt-4 p-3 rounded ${submissionMessage.includes('successfully') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-          {submissionMessage}
+        <div
+          role="status"
+          className={`flex items-center gap-2 p-3 rounded-control text-sm ${
+            submissionMessage.ok
+              ? 'bg-success-50 text-success-700 border border-success-100'
+              : 'bg-danger-50 text-danger-700 border border-danger-100'
+          }`}
+        >
+          {submissionMessage.ok ? (
+            <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+          ) : (
+            <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+          )}
+          {submissionMessage.text}
         </div>
       )}
 
-      <h3 className="text-xl font-bold mt-8 mb-4">Existing Content</h3>
-      {loadingContent ? (
-        <div>Loading existing content...</div>
-      ) : fetchingError ? (
-        <div className="text-red-500">{fetchingError}</div>
-      ) : contentList.length === 0 ? (
-        <div>No content added yet.</div>
-      ) : (
-        <ul>
-          {contentList.map(item => (
-            <li key={item.id} className="mb-2 p-2 border rounded bg-gray-50">
-              {item.text.substring(0, 100)}... (ID: {item.id})
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="pt-4 border-t border-slate-100">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
+          <FileText className="h-4 w-4" aria-hidden="true" />
+          Your content
+        </h3>
+
+        {loadingContent && (
+          <p className="flex items-center gap-2 text-sm text-slate-500">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            Loading…
+          </p>
+        )}
+
+        {!loadingContent && fetchingError && (
+          <p className="flex items-center gap-2 text-sm text-danger-600">
+            <AlertCircle className="h-4 w-4" aria-hidden="true" />
+            {fetchingError}
+          </p>
+        )}
+
+        {!loadingContent && !fetchingError && contentList.length === 0 && (
+          <div className="text-center py-8">
+            <Inbox className="h-8 w-8 text-slate-300 mx-auto mb-2" aria-hidden="true" />
+            <p className="text-slate-500 text-sm">Nothing here yet. Add your first piece above.</p>
+          </div>
+        )}
+
+        {!loadingContent && !fetchingError && contentList.length > 0 && (
+          <ul className="space-y-2">
+            {contentList.map((item) => (
+              <li
+                key={item.id}
+                className="flex items-start gap-3 p-3 rounded-control border border-slate-200 bg-slate-50 text-sm text-slate-700"
+              >
+                <FileText className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" aria-hidden="true" />
+                <span className="flex-1">
+                  {item.text.slice(0, 140)}
+                  {item.text.length > 140 ? '…' : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </form>
   );
 };

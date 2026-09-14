@@ -9,11 +9,19 @@ import LearningPage from './pages/LearningPage';
 import ContentPage from './pages/ContentPage';
 import RoleGate from './components/RoleGate';
 import QuizPage from './pages/QuizPage';
+import SettingsPage from './pages/SettingsPage';
 import Layout from './components/Layout';
+import VoiceNavigator from './components/VoiceNavigator';
+import AccessibleNotification from './components/AccessibleNotification';
 
 const App: React.FC = () => {
   return (
     <Router>
+      {/* Inside Router: it uses useNavigate/useLocation */}
+      <VoiceNavigator />
+      {/* Renders every notify() call according to the viewer's profile — the
+          visual/vibration twin of VoiceNavigator's audio-only state cues. */}
+      <AccessibleNotification />
       <Layout>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -66,6 +74,14 @@ const App: React.FC = () => {
             element={
               <RoleGate expectedRole="student">
                 <QuizPage />
+              </RoleGate>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <RoleGate expectedRole="student">
+                <SettingsPage />
               </RoleGate>
             }
           />

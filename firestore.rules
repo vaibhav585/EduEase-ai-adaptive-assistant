@@ -1,0 +1,70 @@
+rules_version = '2';
+
+// Deploy:  firebase deploy --only firestore:rules
+//
+// Until these are deployed the database is in test mode — ANY client can read
+// every student's disability profile. That is the single highest-severity issue
+// in the project. Deploy before any demo.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function isTeacher() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+
+    match /users/{uid} {
+      // A student reads and writes only their own record. Teachers may read
+      // students (for the dashboard) but never write to them.
+      allow read: if isSelf(uid) || isTeacher();
+      allow create: if isSelf(uid);
+      // Role is set once at signup and must not be self-escalated afterwards.
+      allow update: if isSelf(uid) && request.resource.data.role == resource.data.role;
+      allow delete: if isSelf(uid);
+    }
+
+    match /sessions/{sessionId} {
+      allow read: if isTeacher()
+        || (signedIn() && resource.data.studentId == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.studentId == request.auth.uid;
+      // Sessions are an audit trail: a student may close their own session but
+      // must not be able to rewrite its studentId or delete the evidence.
+      allow update: if signedIn()
+        && resource.data.studentId == request.auth.uid
+        && request.resource.data.studentId == resource.data.studentId;
+      allow delete: if false;
+
+      match /events/{eventId} {
+        allow read: if isTeacher()
+          || (signedIn()
+              && get(/databases/$(database)/documents/sessions/$(sessionId)).data.studentId == request.auth.uid);
+        allow create: if signedIn();
+        allow update, delete: if false;  // events are append-only
+      }
+    }
+
+    match /evaluations/{evaluationId} {
+      // Written by the backend (admin SDK, bypasses these rules). Clients read only.
+      allow read: if isTeacher()
+        || (signedIn() && resource.data.studentId == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /content/{contentId} {
+      allow read: if signedIn();
+      allow write: if isTeacher();
+    }
+
+    // Anything not matched above is denied.
+  }
+}

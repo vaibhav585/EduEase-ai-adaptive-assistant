@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { AlertTriangle, Eye as EyeIcon } from "lucide-react";
 
 declare global {
   interface Window {
@@ -156,36 +157,48 @@ const Eye: React.FC<Props> = ({ targetId, onFocusChange }) => {
   // ───── Render ─────
   if (status === "error") {
     return (
-      <div className="flex flex-col items-center p-4 bg-red-50 rounded-2xl shadow-md">
-        <h2 className="text-lg font-semibold mb-2">👁️ Focus Tracker</h2>
-        <p className="text-red-500 text-sm text-center">{errorMsg}</p>
+      <div className="flex flex-col items-center p-4 bg-danger-50 rounded-card shadow-md">
+        <h2 className="flex items-center justify-center gap-2 text-lg font-semibold mb-2">
+          <EyeIcon className="h-5 w-5 text-primary-600" aria-hidden="true" />
+          Focus Tracker
+        </h2>
+        <p className="flex items-center gap-1.5 text-danger-600 text-sm text-center">
+          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+          {errorMsg}
+        </p>
       </div>
     );
   }
 
   if (status === "loading") {
     return (
-      <div className="flex flex-col items-center p-4 bg-[#fdf7f2] rounded-2xl shadow-md">
-        <h2 className="text-lg font-semibold mb-2">👁️ Focus Tracker</h2>
-        <p className="animate-pulse text-blue-600 text-sm">Starting webcam…</p>
+      <div className="flex flex-col items-center p-4 bg-warning-50 rounded-card shadow-md">
+        <h2 className="flex items-center justify-center gap-2 text-lg font-semibold mb-2">
+          <EyeIcon className="h-5 w-5 text-primary-600" aria-hidden="true" />
+          Focus Tracker
+        </h2>
+        <p className="animate-pulse text-primary-600 text-sm">Starting webcam…</p>
       </div>
     );
   }
 
   if (status === "ready") {
     return (
-      <div className="flex flex-col items-center p-4 bg-[#fdf7f2] rounded-2xl shadow-md">
-        <h2 className="text-lg font-semibold mb-2">👁️ Focus Tracker</h2>
-        <p className="text-sm text-gray-600 mb-3 text-center">
+      <div className="flex flex-col items-center p-4 bg-warning-50 rounded-card shadow-md">
+        <h2 className="flex items-center justify-center gap-2 text-lg font-semibold mb-2">
+          <EyeIcon className="h-5 w-5 text-primary-600" aria-hidden="true" />
+          Focus Tracker
+        </h2>
+        <p className="text-sm text-slate-600 mb-3 text-center">
           Camera is active. Click below to start calibration.
           <br />
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-slate-400">
             You'll click on 5 dots to train eye tracking.
           </span>
         </p>
         <button
           onClick={startCalibration}
-          className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+          className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
         >
           🎯 Start Calibration
         </button>
@@ -205,15 +218,15 @@ const Eye: React.FC<Props> = ({ targetId, onFocusChange }) => {
               <span className="text-yellow-300 font-bold">yellow dot</span>{" "}
               {CLICKS_PER_POINT} times while looking at it
             </p>
-            <p className="text-sm text-gray-300 mt-1">
+            <p className="text-sm text-slate-300 mt-1">
               Point {calPointIndex + 1} / {CALIBRATION_POINTS.length} •{" "}
               Clicks: {clickCount} / {CLICKS_PER_POINT}
             </p>
           </div>
 
-          <div className="w-64 h-2 bg-gray-700 rounded-full mb-8">
+          <div className="w-64 h-2 bg-slate-700 rounded-full mb-8">
             <div
-              className="h-full bg-indigo-500 rounded-full transition-all duration-300"
+              className="h-full bg-primary-500 rounded-full transition-all duration-300"
               style={{
                 width: `${
                   ((calPointIndex * CLICKS_PER_POINT + clickCount) /
@@ -246,7 +259,7 @@ const Eye: React.FC<Props> = ({ targetId, onFocusChange }) => {
               setFocused(true);
               setStatus("tracking");
             }}
-            className="fixed bottom-6 right-6 text-gray-400 hover:text-white text-sm underline"
+            className="fixed bottom-6 right-6 text-slate-400 hover:text-white text-sm underline"
           >
             Skip calibration
           </button>
@@ -257,28 +270,31 @@ const Eye: React.FC<Props> = ({ targetId, onFocusChange }) => {
 
   // status === "tracking"
   return (
-    <div className="flex flex-col items-center p-4 bg-[#fdf7f2] rounded-2xl shadow-md">
-      <h2 className="text-lg font-semibold mb-2">👁️ Focus Tracker</h2>
+    <div className="flex flex-col items-center p-4 bg-warning-50 rounded-card shadow-md">
+      <h2 className="flex items-center justify-center gap-2 text-lg font-semibold mb-2">
+          <EyeIcon className="h-5 w-5 text-primary-600" aria-hidden="true" />
+          Focus Tracker
+        </h2>
 
       {focused ? (
         <div className="text-center">
           <div className="text-4xl mb-2">🌟</div>
-          <p className="text-green-600 font-semibold text-lg">Great focus!</p>
-          <p className="text-xs text-gray-500 mt-1">Keep looking at the screen</p>
+          <p className="text-success-600 font-semibold text-lg">Great focus!</p>
+          <p className="text-xs text-slate-500 mt-1">Keep looking at the screen</p>
         </div>
       ) : (
         <div className="text-center">
           <div className="text-4xl mb-2 animate-bounce">😅</div>
-          <p className="text-red-500 font-bold text-lg animate-pulse">
+          <p className="text-danger-500 font-bold text-lg animate-pulse">
             Focus drifted!
           </p>
-          <p className="text-xs text-gray-500 mt-1">Look back at the screen</p>
+          <p className="text-xs text-slate-500 mt-1">Look back at the screen</p>
         </div>
       )}
 
       <button
         onClick={startCalibration}
-        className="mt-3 text-xs text-indigo-500 hover:text-indigo-700 underline"
+        className="mt-3 text-xs text-primary-500 hover:text-primary-700 underline"
       >
         Re-calibrate
       </button>

@@ -1,0 +1,17 @@
+passage,profile,gradeBefore,gradeAfter,gradeDelta,avgSentenceLength,maxSentenceTarget,shortEnough,easier,metTarget
+biology,adhd,15.5,10.2,5.3,6.1,16.0,True,True,True
+biology,anxiety,15.5,6.7,8.8,3.0,16.0,True,True,True
+biology,autism,15.5,11.3,4.2,5.0,16.0,True,True,True
+biology,blind,15.5,12.1,3.4,10.4,21.0,True,True,True
+biology,deaf,15.5,7.7,7.8,6.6,11.0,True,True,True
+biology,default,15.5,6.5,9.0,7.4,20.0,True,True,True
+biology,dyscalculia,15.5,7.6,7.9,6.4,14.0,True,True,True
+biology,dyslexia,15.5,8.1,7.4,4.7,13.0,True,True,True
+biology,intellectual,15.5,6.2,9.3,3.2,9.0,True,True,True
+history,adhd,30.3,7.2,23.1,5.6,16.0,True,True,True
+history,anxiety,30.3,6.1,24.2,2.7,16.0,True,True,True
+history,autism,30.3,9.6,20.7,4.5,16.0,True,True,True
+history,blind,30.3,10.7,19.6,6.5,21.0,True,True,True
+history,deaf,30.3,3.8,26.5,5.2,11.0,True,True,True
+history,default,30.3,6.5,23.8,7.3,20.0,True,True,True
+history,dyscalculia,30.3,4.5,25.8,4.2,14.0,True,True,True

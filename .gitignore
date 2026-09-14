@@ -17,3 +17,28 @@ frontend/node_modules/
 
 # Secrets
 backend/serviceAccountKey.json
+# Env files (any form)
+.env
+.env.*
+**/env
+**/.env
+backend/env
+frontend/env*
+
+# Secrets
+**/serviceAccountKey.json
+*.pem
+
+# but keep the templates
+!.env.example
+!**/.env.example
+
+# TS build info
+frontend/.tsbuild/
+*.tsbuildinfo
+
+# Build output
+frontend/dist/
+
+# graphify tool output — regeneratable, not project source
+graphify-out/

@@ -1,3 +1,89 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Accessibility preference classes toggled by applyPrefs() in types/profile.ts.
+ *
+ * These classes have existed on document.documentElement since Phase 0 with
+ * NO CSS backing them at all — toggling "High contrast" or "Dyslexia-friendly
+ * font" in a student's profile has silently done nothing since the feature
+ * was built. Fixed here, once, globally, rather than per-component.
+ */
+
+:root {
+  --font-scale: 1;
+}
+
+/* `rem` units (which Tailwind's text-* utilities all use) are always relative
+   to the ROOT element's font-size, never body's — scaling body here would be
+   a no-op. Must be on html. */
+html {
+  font-size: calc(100% * var(--font-scale));
+}
+
+/* Dyslexia-friendly: Atkinson Hyperlegible — designed by the Braille Institute
+   specifically for readers with low vision and reading differences, with
+   deliberately distinct letterforms (b/d/p/q, l/1/I) that reduce the visual
+   confusion a generic sans-serif causes. Loaded in index.html. Increased
+   spacing on top of the typeface change, per standard dyslexia-support
+   guidance. Falls back to the app's normal font, never breaks. */
+.dyslexia-font,
+.dyslexia-font input,
+.dyslexia-font textarea,
+.dyslexia-font button {
+  font-family: "Atkinson Hyperlegible", "Poppins", sans-serif;
+  letter-spacing: 0.02em;
+  word-spacing: 0.1em;
+  line-height: 1.7;
+}
+
+/* High contrast: pushes body text to near-black and brightens/thickens
+   interactive borders, without discarding the brand palette entirely —
+   a full palette swap would need per-component work this flag isn't meant
+   to trigger; this is the WCAG-motivated minimum (stronger text contrast,
+   visible borders). */
+.high-contrast {
+  --tw-text-opacity: 1;
+}
+.high-contrast body,
+.high-contrast p,
+.high-contrast span,
+.high-contrast label,
+.high-contrast li {
+  color: #0f172a; /* slate-900 */
+}
+.high-contrast button,
+.high-contrast input,
+.high-contrast select,
+.high-contrast textarea,
+.high-contrast a {
+  outline-offset: 2px;
+}
+.high-contrast .border-slate-100,
+.high-contrast .border-slate-200 {
+  border-color: #475569 !important; /* slate-600 — visibly darker than the default hairline */
+}
+
+/* Reduced motion: honours the profile toggle AND the OS-level preference,
+   since a student may not know their OS has one. Kills transitions/animation
+   rather than everything instant-snapping, which reads as more broken than smooth. */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

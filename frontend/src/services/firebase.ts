@@ -5,6 +5,9 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getAnalytics } from "firebase/analytics";
 
+// NOTE: this hardcoded config is the ACTIVE project. `frontend/.env` names a
+// different project (eduease-b955c) and is currently unused — don't trust it.
+// Consolidating onto one project is tracked in PHASE_LEARNINGS.md §0.6.
 const firebaseConfig = {
   apiKey: "AIzaSyAaDbPz6noJJmfEwyvXqFUK75bvhNUFCcI",
   authDomain: "ai-learning-app-3025f.firebaseapp.com",

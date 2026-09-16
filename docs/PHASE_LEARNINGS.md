@@ -242,7 +242,7 @@ schema drift, the idempotency key, and chatbot user isolation.
       `ai-learning-app-3025f`. **Two different projects.** Resolve before Phase 1 — data is currently
       going somewhere nobody is looking at.
 - [ ] Settings page to edit profile after signup (hook and types exist; UI doesn't).
-- [ ] `docs/ethics-privacy.md` is still a stub. Needs filling before the usability study.
+- [ ] `docs/ETHICS_AND_PRIVACY.md` is still a stub. Needs filling before the usability study.
 - [ ] Bundle is 1.17 MB — WebGazer and Firebase dominate. Code-split in Phase 6.
 - [ ] `Eye.tsx` calibration UI implies gaze tracking it doesn't do. Either implement gaze-on-target
       or relabel the UI honestly. Phase 3 decision.

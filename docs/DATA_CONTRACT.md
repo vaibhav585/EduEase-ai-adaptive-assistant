@@ -35,6 +35,20 @@ sessions/{sessionId}/events/{eventId}
 
 evaluations/{evaluationId}          (written by P2, read by P4)
   studentId, sessionId, computedAt, daseScore, parameters, errorBreakdown
+
+content/{id}                        (main's original content pipeline)
+  text, uid
+
+quiz_results/{id}                   (main's original, still read by the
+  student_id, teacher_id,            teacher dashboard's score/weak-topics
+  score, total_questions,            charts, written by POST /analytics/log-quiz/
+  wrong_topics, timestamp            — coarser and older than sessions/events,
+                                      kept alongside rather than replaced)
+
+telemetry_sessions/{id}             (as quiz_results — written by
+  student_id, teacher_id,            POST /analytics/log-session/)
+  session_id, average_focus_score,
+  frustration_triggers, timestamp
 ```
 
 **Why a flat `sessions` collection** rather than nesting under `users/{uid}/sessions`: the teacher

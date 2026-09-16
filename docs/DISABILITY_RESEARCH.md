@@ -2,6 +2,10 @@
 
 This document compiles the extensive research conducted on the challenges faced by students with various disabilities, the gaps in current technological solutions, and the proposed novel solutions for an AI-powered adaptive learning platform.
 
+This is the *why* — the research grounding behind each design choice, in
+qualitative terms. For the actual implemented formulas, exact weights, and
+worked examples, see [PROJECT_EXPLANATION.md §4](PROJECT_EXPLANATION.md#4-every-calculation-in-detail).
+
 ---
 
 ## 1. Deaf and Hearing-Impaired (DHH) Students

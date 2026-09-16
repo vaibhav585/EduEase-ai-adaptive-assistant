@@ -1,6 +1,8 @@
-# API Documentation
+# API Reference
 
-Base URL: `http://localhost:8000`
+Base URL: `http://localhost:8000` (backend default port — this integration
+branch has been run locally on 8001 to avoid a port collision with an
+unrelated Docker container; not a code default).
 
 All protected routes require an `Authorization: Bearer <firebase_id_token>` header.
 
@@ -10,7 +12,7 @@ All protected routes require an `Authorization: Bearer <firebase_id_token>` head
 
 ### Token Authentication (`verify_user`)
 
-Extracts the Bearer token from the `Authorization` header and validates it via `firebase_admin.auth.verify_id_token()`. Returns the decoded token dictionary containing `uid`, `email`, etc.
+Extracts the Bearer token from the `Authorization` header and validates it via `google.oauth2.id_token.verify_firebase_token()` against Google's public signing keys (`firebase_config.py`) — independent of the service-account credential used for Firestore access. Returns the decoded token dictionary containing `uid`, `email`, etc.
 
 **Failure responses:**
 - `401 Unauthorized` — Missing, malformed, or expired token.
@@ -390,6 +392,85 @@ Retrieve aggregated quiz and session analytics for a specific student.
 
 ---
 
+## Admin Routes
+
+### `POST /admin/create-user`
+Creates a Firebase Auth user + Firestore profile. `role` is `"student"` or
+`"teacher"`; students may carry `grade_level`/`teacher_id`. Auth: `verify_role("admin")`.
+
+### `GET /admin/users`
+Lists every user, for the admin dashboard's user table. Auth: `verify_role("admin")`.
+
+---
+
+## DASE / Telemetry / Voice Routes (`/api/*`)
+
+Added alongside the DASE scoring engine (`backend/routers/`). Formulas and
+scoring logic are documented in
+[PROJECT_EXPLANATION.md §4](PROJECT_EXPLANATION.md#4-every-calculation-in-detail)
+— this section only covers the request/response shapes.
+
+### `POST /api/sessions`
+Starts a telemetry session (`studentId`, `kind: "quiz"|"reading"`, optional
+`contentId`). Returns `{sessionId}`. Auth: `verify_user` (the authoritative
+`studentId` is the caller's own uid, never the request body's).
+
+### `POST /api/events`
+Batch-writes up to 100 `QuestionEvent`/`ReadingEvent`/`VoiceEvent` objects
+(shapes in [DATA_CONTRACT.md §3](DATA_CONTRACT.md)) to a session. Skips and
+reports malformed events rather than failing the whole batch. Auth: `verify_user`.
+
+### `PATCH /api/sessions/{session_id}`
+Ends a session with a `SessionSummary` (`totalQuestions`, `correct`,
+`totalTimeMs`, `completed`, `meanFocusRatio`). Auth: `verify_user`.
+
+### `GET /api/sessions/{session_id}/events`
+Reads back a session's raw events, ordered by server timestamp. Auth: `verify_user`.
+
+### `POST /api/classify`
+Classifies one wrong answer's probable cause
+(`KNOWLEDGE_GAP`/`ATTENTION_LAPSE`/`PROCESSING_DELAY`/`COMPREHENSION_BARRIER`)
+and whether the DASE closed loop should re-present a simpler variant. Auth: `verify_user`.
+
+### `POST /api/evaluate`
+Computes and persists a session's DASE score (`sessionId`, `profile`,
+`persist`). The authoritative `studentId` is the caller's own uid. Auth: `verify_user`.
+
+### `GET /api/evaluation/{student_id}`
+A student's historical DASE evaluations, newest first. Auth: `verify_user`.
+
+### `GET /api/evaluation/{student_id}/errors`
+Aggregated error-cause breakdown across a student's recent sessions. Auth: `verify_user`.
+
+### `GET /api/dase/profiles`
+Every DASE weight profile's rationale and weights, for the teacher dashboard
+to render. Auth: `verify_user`.
+
+### `GET /api/analytics/roster`
+Every student on the calling teacher's roster (`teacher_id` match), each
+with their latest DASE score (`null` if never evaluated). Auth: `verify_role("teacher")`.
+
+### `GET /api/analytics/student/{student_id}`
+One student's DASE trend + combined error-cause breakdown. `404`s if the
+student isn't on the calling teacher's roster. Auth: `verify_role("teacher")`.
+
+### `GET /api/analytics/class`
+Class-wide aggregates: average score, average by primary disability, average
+completion rate — see [PROJECT_EXPLANATION.md §4.7](PROJECT_EXPLANATION.md#47-teacher-facing-aggregates). Auth: `verify_role("teacher")`.
+
+### `POST /api/analytics/recommendation`
+AI-generated teaching suggestions grounded in one student's latest DASE
+evaluation, cached per evaluation. Auth: `verify_role("teacher")`.
+
+### `POST /api/voice/intent`
+Classifies a spoken command's intent (rules first, LLM fallback) — see
+[PROJECT_EXPLANATION.md §4.3](PROJECT_EXPLANATION.md#43-voice-intent-confidence). Auth: `verify_user`.
+
+### `GET /api/voice/commands`
+Spoken help text + the machine-readable command list. Auth: `verify_user`.
+
+---
+
 ## Route Summary Matrix
 
 | Method | Path | Auth | Role | Description |
@@ -403,5 +484,22 @@ Retrieve aggregated quiz and session analytics for a specific student.
 | POST | `/chatbot/` | `verify_user` | Any | RAG chatbot + sentiment |
 | POST | `/analytics/log-quiz/` | `verify_user` | Any | Log quiz results |
 | POST | `/analytics/log-session/` | `verify_user` | Any | Log session telemetry |
-| GET | `/teacher/students` | `verify_user` | Teacher | Student roster |
-| GET | `/teacher/analytics/{student_id}` | `verify_user` | Teacher | Student analytics |
+| GET | `/teacher/students` | `verify_user` | Teacher | Student roster (main's original, still used by the coarse quiz/session charts) |
+| GET | `/teacher/analytics/{student_id}` | `verify_user` | Teacher | Coarse quiz/session analytics for one student |
+| POST | `/admin/create-user` | `verify_role` | Admin | Create a Firebase Auth user + Firestore profile |
+| GET | `/admin/users` | `verify_role` | Admin | List every user |
+| POST | `/api/sessions` | `verify_user` | Any | Start a telemetry session |
+| POST | `/api/events` | `verify_user` | Any | Batch-write question/reading/voice events |
+| PATCH | `/api/sessions/{id}` | `verify_user` | Any | End a session with its summary |
+| GET | `/api/sessions/{id}/events` | `verify_user` | Any | Read back a session's raw events |
+| POST | `/api/classify` | `verify_user` | Any | Classify a wrong answer's probable cause |
+| POST | `/api/evaluate` | `verify_user` | Any | Compute + persist a session's DASE score |
+| GET | `/api/evaluation/{student_id}` | `verify_user` | Any | A student's DASE evaluation history |
+| GET | `/api/evaluation/{student_id}/errors` | `verify_user` | Any | Aggregated error-cause breakdown |
+| GET | `/api/dase/profiles` | `verify_user` | Any | DASE weight profiles + rationale |
+| GET | `/api/analytics/roster` | `verify_role` | Teacher | Roster + each student's latest DASE score |
+| GET | `/api/analytics/student/{id}` | `verify_role` | Teacher | One student's DASE trend + error breakdown |
+| GET | `/api/analytics/class` | `verify_role` | Teacher | Class-wide DASE aggregates |
+| POST | `/api/analytics/recommendation` | `verify_role` | Teacher | AI teaching suggestions from DASE data |
+| POST | `/api/voice/intent` | `verify_user` | Any | Classify a spoken command's intent |
+| GET | `/api/voice/commands` | `verify_user` | Any | Spoken help text + command list |

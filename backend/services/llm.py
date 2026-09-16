@@ -37,6 +37,22 @@ llm = ChatGoogleGenerativeAI(
     max_retries=1,
 )
 
+# Same client, but with Gemini's native JSON mode turned on. Prompt-only JSON
+# instructions still let the model emit prose/markdown fences or the odd
+# syntax slip on a schema this large (quiz_gen's 9-question, disability-format
+# + simpler-variant schema) — response_mime_type makes those structurally
+# impossible instead of retrying and hoping. call_json uses this; call_text
+# (chatbot, simplification, recommendations) stays on the plain `llm` above
+# since those want prose, not JSON.
+llm_json = ChatGoogleGenerativeAI(
+    model=GEMINI_MODEL,
+    google_api_key=GOOGLE_API_KEY,
+    max_tokens=8192,
+    temperature=0.3,
+    max_retries=1,
+    response_mime_type="application/json",
+)
+
 # Built lazily, not at import, so a missing groq package or key never breaks the
 # app for everyone else — only the fallback path silently isn't available.
 _groq_client: Optional[Any] = None
@@ -75,7 +91,11 @@ def _call_gemini(system: str, user: str) -> str:
     return llm.invoke([SystemMessage(content=system), HumanMessage(content=user)]).content.strip()
 
 
-def _call_groq(system: str, user: str) -> str:
+def _call_gemini_json(system: str, user: str) -> str:
+    return llm_json.invoke([SystemMessage(content=system), HumanMessage(content=user)]).content.strip()
+
+
+def _call_groq(system: str, user: str, json_mode: bool = False) -> str:
     client = _get_groq()
     if client is None:
         raise RuntimeError(_groq_unavailable_reason or "Groq not configured")
@@ -87,6 +107,10 @@ def _call_groq(system: str, user: str) -> str:
         ],
         temperature=0.3,
         max_tokens=8192,
+        # llama-3.3-70b-versatile (and most current Groq chat models) honour
+        # OpenAI-style json_object mode, same structural guarantee as Gemini's
+        # response_mime_type below.
+        response_format={"type": "json_object"} if json_mode else None,
     )
     return (completion.choices[0].message.content or "").strip()
 
@@ -112,18 +136,32 @@ def call_text(system: str, user: str) -> str:
 def call_json(system: str, user: str, retries: int = 1) -> Any:
     """Ask for JSON and actually get JSON.
 
-    Both providers wrap JSON in markdown fences some of the time regardless of
-    instructions, so strip them rather than trusting the prompt. One retry with
-    an explicit repair instruction covers most of the rest. Malformed-JSON
-    retries stay on whichever provider answered first in call_text this attempt
-    — call_text already tried Gemini-then-Groq once, so a repair round trip
-    isn't re-racing both providers from scratch each time.
+    Uses each provider's native JSON mode (Gemini response_mime_type, Groq
+    json_object) rather than prompt-only instructions — that makes "the model
+    wrote prose/markdown/an unescaped-newline syntax slip" structurally
+    impossible instead of something to retry and hope past. The schema itself
+    (which fields, 9 questions) still isn't enforced by JSON mode, so `_valid`
+    in quiz_gen.py still checks that separately; this only guarantees the
+    output parses. One retry with an explicit repair instruction remains as a
+    last-resort net for the rare case a response gets cut off mid-object.
     """
     prompt = user
     last_err: Optional[str] = None
 
     for attempt in range(retries + 1):
-        raw = call_text(system, prompt)
+        try:
+            raw = _call_gemini_json(system, prompt)
+        except Exception as gemini_exc:  # noqa: BLE001
+            if not GROQ_API_KEY:
+                raise LLMUnavailable(str(gemini_exc)) from gemini_exc
+            try:
+                raw = _call_groq(system, prompt, json_mode=True)
+                print(f"[llm] Gemini failed ({gemini_exc}); served from Groq fallback")
+            except Exception as groq_exc:  # noqa: BLE001
+                raise LLMUnavailable(
+                    f"gemini: {gemini_exc} | groq: {groq_exc}"
+                ) from groq_exc
+
         cleaned = _FENCE.sub("", raw).strip()
         try:
             return json.loads(cleaned)

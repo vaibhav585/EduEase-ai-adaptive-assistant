@@ -1,7 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { signOut } from "firebase/auth";
-import { auth } from "../services/firebase";
 import api from "../services/api";
 import Charts from "../components/Charts";
 import {
@@ -40,7 +37,6 @@ interface DaseStudentDetail {
 const COLORS = ["#2a14b4", "#4338ca", "#5148d7", "#c3c0ff", "#4edea3", "#6ffbbe", "#F59E0B", "#EF4444", "#8B5CF6", "#14B8A6"];
 
 const TeacherDashboardPage: React.FC = () => {
-  const navigate = useNavigate();
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
@@ -118,8 +114,6 @@ const TeacherDashboardPage: React.FC = () => {
     }
   };
 
-  const handleLogout = async () => { await signOut(auth); navigate("/login"); };
-
   const focusBuckets = { high: 0, medium: 0, low: 0 };
   const quizAvgPerStudent: { name: string; avg: number }[] = [];
   const sessionTimeline: { label: string; focus: number; frustrations: number }[] = [];
@@ -181,15 +175,9 @@ const TeacherDashboardPage: React.FC = () => {
     <div className="min-h-screen bg-surface-bright animate-fade-in">
       <div className="max-w-[1440px] mx-auto px-4 md:px-12 py-8 space-y-8">
         {/* Page Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="font-heading text-xs font-semibold text-primary uppercase tracking-widest">Teacher Dashboard</span>
-            <h1 className="font-heading text-3xl md:text-4xl font-bold text-on-surface mt-1">Classroom Overview</h1>
-          </div>
-          <button onClick={handleLogout}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-medium shadow-sm transition-all active:scale-95">
-            <span className="material-symbols-outlined text-[16px]">logout</span>Log Out
-          </button>
+        <div>
+          <span className="font-heading text-xs font-semibold text-primary uppercase tracking-widest">Teacher Dashboard</span>
+          <h1 className="font-heading text-3xl md:text-4xl font-bold text-on-surface mt-1">Classroom Overview</h1>
         </div>
 
         {/* Hero Banner */}

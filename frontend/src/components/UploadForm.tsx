@@ -7,6 +7,7 @@ const UploadForm: React.FC = () => {
   const [file, setFile] = React.useState<File | null>(null);
   const [uploading, setUploading] = React.useState(false);
   const [dragOver, setDragOver] = React.useState(false);
+  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
   const { profile, gradeLevel, readingDifficulty } = useProfile();
   const navigate = useNavigate();
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -26,6 +27,7 @@ const UploadForm: React.FC = () => {
     e.preventDefault();
     if (!file) return;
     setUploading(true);
+    setErrorMsg(null);
     const formData = new FormData();
     formData.append('file', file);
     formData.append('describeImages', String(profile.prefs.describeImages));
@@ -39,8 +41,14 @@ const UploadForm: React.FC = () => {
           images: response.data.images ?? [],
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading file:', error);
+      setErrorMsg(
+        error?.response?.data?.detail ||
+        (error?.code === 'ERR_NETWORK'
+          ? 'Could not reach the server. Is the backend running?'
+          : 'Something went wrong uploading that file. Please try again.')
+      );
     } finally {
       setUploading(false);
     }
@@ -88,6 +96,13 @@ const UploadForm: React.FC = () => {
           </span>
         ) : "Upload & Simplify"}
       </button>
+
+      {errorMsg && (
+        <div className="p-3 rounded-xl bg-error-container text-on-error-container text-sm font-body flex items-start gap-2" role="alert">
+          <span className="material-symbols-outlined text-[18px]">error</span>
+          {errorMsg}
+        </div>
+      )}
     </form>
   );
 };

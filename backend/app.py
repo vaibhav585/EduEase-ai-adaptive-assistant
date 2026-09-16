@@ -7,7 +7,6 @@ import io
 import json
 import re
 from firebase_config import db
-import random
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage
 from langchain_classic.chains import ConversationChain
@@ -44,18 +43,6 @@ def _ensure_user(email: str, password: str, profile: dict) -> str:
     return uid
 
 
-def _delete_collection(col_name: str):
-    batch_size = 50
-    while True:
-        docs = list(db.collection(col_name).limit(batch_size).stream())
-        if not docs:
-            break
-        batch = db.batch()
-        for d in docs:
-            batch.delete(d.reference)
-        batch.commit()
-
-
 def _seed_demo_data():
     try:
         admin_uid = _ensure_user(ADMIN_EMAIL, ADMIN_PASSWORD, {"email": ADMIN_EMAIL, "role": "admin"})
@@ -79,50 +66,17 @@ def _seed_demo_data():
             })
             student_map.append((uid, teacher_uid))
 
-        existing = list(db.collection("quiz_results").limit(1).stream())
-        if existing:
-            print("[SEED] Clearing stale demo data...")
-            _delete_collection("quiz_results")
-            _delete_collection("telemetry_sessions")
-
-        topics_pool = [
-            "Cell Biology", "Photosynthesis Process", "Chemical Bonding",
-            "Solar System Structure", "Water Cycle Mechanics", "Gravity & Motion",
-            "Plant Anatomy", "Ecosystem Dynamics", "Light & Optics",
-            "Human Anatomy", "Computer Memory Architecture",
-            "Object-Oriented Programming", "Control Flow Structures",
-        ]
-        now = datetime.now(timezone.utc)
-        for sid, tid in student_map:
-            for q in range(5):
-                score = random.randint(4, 10)
-                wrong = random.sample(topics_pool, k=random.randint(0, 3))
-                ts = now.replace(hour=10 + q, minute=0, second=0, microsecond=0)
-                ts = ts.replace(day=max(1, ts.day - (4 - q)))
-                db.collection("quiz_results").add({
-                    "student_id": sid,
-                    "teacher_id": tid,
-                    "score": score,
-                    "total_questions": 10,
-                    "wrong_topics": wrong,
-                    "timestamp": ts.isoformat(),
-                })
-
-            for s in range(5):
-                focus = round(0.5 + random.random() * 0.45, 2)
-                triggers = random.randint(0, 4)
-                ts = now.replace(hour=9 + s, minute=30, second=0, microsecond=0)
-                ts = ts.replace(day=max(1, ts.day - (4 - s)))
-                db.collection("telemetry_sessions").add({
-                    "student_id": sid,
-                    "teacher_id": tid,
-                    "session_id": f"seed-{sid[:6]}-{s}",
-                    "average_focus_score": focus,
-                    "frustration_triggers": triggers,
-                    "timestamp": ts.isoformat(),
-                })
-
-        print(f"[SEED] Seeded {len(student_map)} students, {len(teacher_uids)} teachers, 50 quiz + 50 session records")
+        # Deliberately no fake quiz_results/telemetry_sessions seeding here.
+        # This used to wipe both collections on every restart and refill them
+        # with 50 random records (scores, focus/frustration numbers, and
+        # topics from a fixed grade-agnostic pool like "Object-Oriented
+        # Programming") completely disconnected from what any student
+        # actually did — which both corrupted the "live, per-student" teacher
+        # view with nonsense and destroyed real quiz history on every
+        # restart. The teacher dashboard now shows only real data, written by
+        # /analytics/log-quiz/, /analytics/log-session/, and the DASE
+        # telemetry pipeline as students actually take quizzes.
+        print(f"[SEED] Seeded {len(student_map)} students, {len(teacher_uids)} teachers (no fake quiz/session data)")
 
     except Exception as e:
         print(f"[WARN] Seed skipped: {e}")

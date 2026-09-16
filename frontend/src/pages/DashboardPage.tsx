@@ -1,20 +1,11 @@
 import React from 'react';
-import { useSignOut } from 'react-firebase-hooks/auth';
-import { auth } from '../services/firebase';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import Chatbot from '../components/Chatbot';
 import { useTranslation } from 'react-i18next';
 
 const DashboardPage: React.FC = () => {
-  const [signOut] = useSignOut(auth);
-  const navigate = useNavigate();
   const [showChatbot, setShowChatbot] = React.useState(false);
   const { t, i18n } = useTranslation();
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/login');
-  };
 
   const changeLanguage = (lng: string) => i18n.changeLanguage(lng);
 
@@ -51,22 +42,15 @@ const DashboardPage: React.FC = () => {
             <span className="font-heading text-xs font-semibold text-primary uppercase tracking-widest">{t('Student Dashboard')}</span>
             <h1 className="font-heading text-3xl md:text-4xl font-bold text-on-surface mt-1">{t('Welcome to your dashboard!')}</h1>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="glass-card rounded-full px-1 py-0.5 flex">
-              {["en", "hi", "ta"].map((lng) => (
-                <button key={lng} onClick={() => changeLanguage(lng)}
-                  className={`px-3 py-1.5 text-xs font-heading font-semibold rounded-full transition-all ${
-                    i18n.language === lng ? "bg-primary text-white" : "text-on-surface-variant hover:text-primary"
-                  }`}>
-                  {lng.toUpperCase()}
-                </button>
-              ))}
-            </div>
-            <button onClick={handleSignOut}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-error text-on-error text-sm font-heading font-semibold shadow-lg hover:shadow-xl transition-all active:scale-95">
-              <span className="material-symbols-outlined text-[16px]">logout</span>
-              {t('Sign Out')}
-            </button>
+          <div className="glass-card rounded-full px-1 py-0.5 flex">
+            {["en", "hi", "ta"].map((lng) => (
+              <button key={lng} onClick={() => changeLanguage(lng)}
+                className={`px-3 py-1.5 text-xs font-heading font-semibold rounded-full transition-all ${
+                  i18n.language === lng ? "bg-primary text-white" : "text-on-surface-variant hover:text-primary"
+                }`}>
+                {lng.toUpperCase()}
+              </button>
+            ))}
           </div>
         </div>
 

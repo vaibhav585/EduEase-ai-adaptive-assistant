@@ -1,12 +1,18 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "../services/api";
+import { useProfile } from "../hooks/useProfile";
+import { scoringProfile } from "../types/profile";
+import { endSession, startSession, track, triggerEvaluation } from "../services/telemetry";
 
 interface Question {
+  questionId?: string;
+  conceptId?: string | null;
   question: string;
   options: string[];
   answer: string;
   topic?: string;
+  difficulty?: number;
   question_type?: "fill_blank" | "true_false" | "mcq";
 }
 
@@ -14,6 +20,7 @@ const QuizPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { text } = location.state || { text: "" };
+  const { uid, profile, gradeLevel, loading: profileLoading } = useProfile();
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -26,10 +33,22 @@ const QuizPage: React.FC = () => {
 
   const MAX_QUESTIONS = 10;
 
+  // ─── DASE telemetry (DATA_CONTRACT §3.1) ───
+  // Without this, quizzes complete fine but the teacher dashboard's DASE
+  // panel has nothing to show — no session, no events, no evaluation ever
+  // gets written. See services/telemetry.ts.
+  const sessionIdRef = useRef<string | null>(null);
+  const quizStartRef = useRef<number>(Date.now());
+  const questionStartRef = useRef<number>(Date.now());
+
   useEffect(() => {
-    if (text) {
+    if (text && !profileLoading) {
       api
-        .post("/generate-quiz/", { text })
+        .post("/generate-quiz/", {
+          text,
+          profile: scoringProfile(profile),
+          grade_level: gradeLevel ?? undefined,
+        })
         .then((res) => {
           const data = res.data.questions.slice(0, MAX_QUESTIONS);
           setQuestions(data);
@@ -37,7 +56,24 @@ const QuizPage: React.FC = () => {
         .catch((err) => console.error("Error fetching quiz:", err))
         .finally(() => setLoading(false));
     }
-  }, [text]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, profileLoading]);
+
+  // Open a telemetry session once we know who the student is and have questions.
+  useEffect(() => {
+    if (profileLoading || !uid || !questions.length || sessionIdRef.current) return;
+    let cancelled = false;
+    startSession(uid, "quiz").then((id) => {
+      if (!cancelled) {
+        sessionIdRef.current = id;
+        quizStartRef.current = Date.now();
+        questionStartRef.current = Date.now();
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileLoading, uid, questions.length]);
 
   const totalQuestions = questions.length;
 
@@ -60,6 +96,33 @@ const QuizPage: React.FC = () => {
 
     const topicLabel = currentQuestion.topic || currentQuestion.answer;
 
+    if (sessionIdRef.current && uid) {
+      track({
+        type: "question",
+        sessionId: sessionIdRef.current,
+        studentId: uid,
+        ts: Date.now(),
+        questionId: currentQuestion.questionId || `q${currentIndex}`,
+        conceptId: currentQuestion.conceptId ?? null,
+        topic: currentQuestion.topic ?? null,
+        difficulty: currentQuestion.difficulty ?? 3,
+        questionType: currentQuestion.question_type ?? "mcq",
+        selected: userAnswer,
+        correct: isCorrect,
+        timeMs: Date.now() - questionStartRef.current,
+        timeToFirstInteractionMs: null,
+        attempts: 1,
+        answerChanges: 0,
+        hintsUsed: 0,
+        revisits: 0,
+        reRead: false,
+        focusRatio: null,
+        focusSamples: 0,
+        isRepresentation: false,
+        originalQuestionId: null,
+      });
+    }
+
     if (isCorrect) {
       setScore((prev) => prev + 1);
     } else {
@@ -71,6 +134,7 @@ const QuizPage: React.FC = () => {
       setCurrentIndex((prev) => prev + 1);
       setSelectedAnswer(null);
       setTypedAnswer("");
+      questionStartRef.current = Date.now();
     } else {
       const finalScore = score + (isCorrect ? 1 : 0);
       const finalWrong = isCorrect ? wrongTopics : [...wrongTopics, topicLabel];
@@ -80,6 +144,16 @@ const QuizPage: React.FC = () => {
         total_questions: totalQuestions,
         wrong_topics: [...new Set(finalWrong)],
       }).catch(() => {});
+
+      if (sessionIdRef.current && uid) {
+        endSession(sessionIdRef.current, {
+          totalQuestions,
+          correct: finalScore,
+          totalTimeMs: Date.now() - quizStartRef.current,
+          completed: true,
+          meanFocusRatio: null,
+        }).then(() => triggerEvaluation(sessionIdRef.current, uid, scoringProfile(profile)));
+      }
     }
   };
 

@@ -1,34 +1,16 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthState } from 'react-firebase-hooks/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../services/firebase';
 import api from '../services/api';
+import { useProfile } from '../hooks/useProfile';
 
 const UploadForm: React.FC = () => {
   const [file, setFile] = React.useState<File | null>(null);
-  const [gradeLevel, setGradeLevel] = React.useState<string | null>(null);
-  const [readingDifficulty, setReadingDifficulty] = React.useState<string | null>(null);
   const [uploading, setUploading] = React.useState(false);
   const [dragOver, setDragOver] = React.useState(false);
-  const [user] = useAuthState(auth);
+  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+  const { profile, gradeLevel, readingDifficulty } = useProfile();
   const navigate = useNavigate();
   const inputRef = React.useRef<HTMLInputElement>(null);
-
-  React.useEffect(() => {
-    if (!user) return;
-    const fetchProfile = async () => {
-      try {
-        const snap = await getDoc(doc(db, 'users', user.uid));
-        if (snap.exists()) {
-          const data = snap.data();
-          setGradeLevel(data.grade_level ?? null);
-          setReadingDifficulty(data.reading_difficulty ?? null);
-        }
-      } catch {}
-    };
-    fetchProfile();
-  }, [user]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) setFile(e.target.files[0]);
@@ -45,13 +27,28 @@ const UploadForm: React.FC = () => {
     e.preventDefault();
     if (!file) return;
     setUploading(true);
+    setErrorMsg(null);
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('describeImages', String(profile.prefs.describeImages));
     try {
       const response = await api.post('/upload-pdf/', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-      navigate('/learning', { state: { text: response.data.text, grade_level: gradeLevel, reading_difficulty: readingDifficulty } });
-    } catch (error) {
+      navigate('/learning', {
+        state: {
+          text: response.data.text,
+          grade_level: gradeLevel,
+          reading_difficulty: readingDifficulty,
+          images: response.data.images ?? [],
+        },
+      });
+    } catch (error: any) {
       console.error('Error uploading file:', error);
+      setErrorMsg(
+        error?.response?.data?.detail ||
+        (error?.code === 'ERR_NETWORK'
+          ? 'Could not reach the server. Is the backend running?'
+          : 'Something went wrong uploading that file. Please try again.')
+      );
     } finally {
       setUploading(false);
     }
@@ -99,6 +96,13 @@ const UploadForm: React.FC = () => {
           </span>
         ) : "Upload & Simplify"}
       </button>
+
+      {errorMsg && (
+        <div className="p-3 rounded-xl bg-error-container text-on-error-container text-sm font-body flex items-start gap-2" role="alert">
+          <span className="material-symbols-outlined text-[18px]">error</span>
+          {errorMsg}
+        </div>
+      )}
     </form>
   );
 };

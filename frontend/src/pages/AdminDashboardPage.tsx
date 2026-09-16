@@ -1,7 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { signOut } from "firebase/auth";
-import { auth } from "../services/firebase";
 import api from "../services/api";
 
 interface UserRecord {
@@ -13,7 +10,6 @@ interface UserRecord {
 }
 
 const AdminDashboardPage: React.FC = () => {
-  const navigate = useNavigate();
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState("");
@@ -37,11 +33,6 @@ const AdminDashboardPage: React.FC = () => {
   const teachers = users.filter((u) => u.role === "teacher");
   const students = users.filter((u) => u.role === "student");
   const admins = users.filter((u) => u.role === "admin");
-
-  const handleLogout = async () => {
-    await signOut(auth);
-    navigate("/login");
-  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,16 +73,9 @@ const AdminDashboardPage: React.FC = () => {
     <div className="min-h-screen bg-surface-bright animate-fade-in">
       <div className="max-w-[1440px] mx-auto px-4 md:px-12 py-8 space-y-8">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="font-heading text-sm font-semibold text-primary uppercase tracking-widest">Administration</span>
-            <h1 className="font-heading text-3xl md:text-4xl font-bold text-on-surface mt-1">Dashboard</h1>
-          </div>
-          <button onClick={handleLogout}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-error text-on-error text-sm font-semibold shadow-lg hover:shadow-xl transition-all active:scale-95">
-            <span className="material-symbols-outlined text-[18px]">logout</span>
-            Log Out
-          </button>
+        <div>
+          <span className="font-heading text-sm font-semibold text-primary uppercase tracking-widest">Administration</span>
+          <h1 className="font-heading text-3xl md:text-4xl font-bold text-on-surface mt-1">Dashboard</h1>
         </div>
 
         {/* Bento KPI Grid */}

@@ -22,6 +22,21 @@ interface Analytics {
   total_frustration_triggers: number;
 }
 
+// DASE (Disability-Adaptive Scoring Engine) — layered on top of main's
+// teacher_id-scoped roster via backend/routers/analytics.py. `daseScore` is
+// null until the student has at least one evaluated session; never shown as 0.
+interface RosterEntry {
+  uid: string;
+  daseScore: number | null;
+  coverage: number | null;
+  primary: string | null;
+}
+interface DaseStudentDetail {
+  trend: { computedAt: unknown; score: number; coverage: number }[];
+  errorBreakdownCombined: Record<string, number>;
+  evaluationCount: number;
+}
+
 const COLORS = ["#2a14b4", "#4338ca", "#5148d7", "#c3c0ff", "#4edea3", "#6ffbbe", "#F59E0B", "#EF4444", "#8B5CF6", "#14B8A6"];
 
 const TeacherDashboardPage: React.FC = () => {
@@ -33,12 +48,25 @@ const TeacherDashboardPage: React.FC = () => {
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [allAnalytics, setAllAnalytics] = useState<Record<string, Analytics>>({});
   const [classLoading, setClassLoading] = useState(false);
+  const [daseRoster, setDaseRoster] = useState<Record<string, RosterEntry>>({});
+  const [daseDetail, setDaseDetail] = useState<DaseStudentDetail | null>(null);
+  const [daseLoading, setDaseLoading] = useState(false);
+  const [recommendation, setRecommendation] = useState<string | null>(null);
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
 
   useEffect(() => {
     api.get("/teacher/students")
       .then((res) => setStudents(res.data.students))
       .catch(() => setStudents([]))
       .finally(() => setLoading(false));
+
+    api.get("/api/analytics/roster")
+      .then((res) => {
+        const map: Record<string, RosterEntry> = {};
+        (res.data.students as RosterEntry[]).forEach((s) => { map[s.uid] = s; });
+        setDaseRoster(map);
+      })
+      .catch(() => setDaseRoster({}));
   }, []);
 
   useEffect(() => {
@@ -66,6 +94,29 @@ const TeacherDashboardPage: React.FC = () => {
       .catch(() => setAnalytics(null))
       .finally(() => setAnalyticsLoading(false));
   }, [selectedId, allAnalytics]);
+
+  useEffect(() => {
+    setRecommendation(null);
+    if (!selectedId) { setDaseDetail(null); return; }
+    setDaseLoading(true);
+    api.get(`/api/analytics/student/${selectedId}`)
+      .then((res) => setDaseDetail(res.data))
+      .catch(() => setDaseDetail(null))
+      .finally(() => setDaseLoading(false));
+  }, [selectedId]);
+
+  const handleGetRecommendation = async () => {
+    if (!selectedId) return;
+    setRecommendationLoading(true);
+    try {
+      const res = await api.post("/api/analytics/recommendation", { studentId: selectedId });
+      setRecommendation(res.data.recommendation);
+    } catch {
+      setRecommendation("Could not load suggestions right now.");
+    } finally {
+      setRecommendationLoading(false);
+    }
+  };
 
   const handleLogout = async () => { await signOut(auth); navigate("/login"); };
 
@@ -242,6 +293,7 @@ const TeacherDashboardPage: React.FC = () => {
                   <tr className="bg-surface-container-low">
                     <th className="px-6 py-3 text-left font-heading text-xs font-semibold text-on-surface-variant uppercase">Student</th>
                     <th className="px-6 py-3 text-left font-heading text-xs font-semibold text-on-surface-variant uppercase">Grade</th>
+                    <th className="px-6 py-3 text-left font-heading text-xs font-semibold text-on-surface-variant uppercase">DASE Score</th>
                     <th className="px-6 py-3 text-right font-heading text-xs font-semibold text-on-surface-variant uppercase">Actions</th>
                   </tr>
                 </thead>
@@ -258,6 +310,15 @@ const TeacherDashboardPage: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-on-surface">{s.grade_level ? `Grade ${s.grade_level}` : "—"}</td>
+                      <td className="px-6 py-4 text-sm">
+                        {daseRoster[s.uid]?.daseScore != null ? (
+                          <span className="font-heading font-semibold text-primary">
+                            {Math.round(daseRoster[s.uid].daseScore! * 100)}%
+                          </span>
+                        ) : (
+                          <span className="text-on-surface-variant text-xs">Not yet scored</span>
+                        )}
+                      </td>
                       <td className="px-6 py-4 text-right">
                         <button onClick={(e) => { e.stopPropagation(); setSelectedId(s.uid); }}
                           className={`font-heading text-xs font-semibold px-4 py-2 rounded-full transition-all ${
@@ -299,6 +360,50 @@ const TeacherDashboardPage: React.FC = () => {
               </>
             ) : (
               <p className="text-on-surface-variant text-center py-8">No data available for this student.</p>
+            )}
+
+            {/* DASE panel — disability-weighted composite, layered on top of the
+                quiz/session summary above rather than replacing it. */}
+            {daseLoading ? (
+              <p className="text-on-surface-variant text-center py-4">Loading DASE evaluation...</p>
+            ) : daseDetail && daseDetail.evaluationCount > 0 ? (
+              <div className="glass-card rounded-3xl p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-heading text-xs font-semibold text-on-surface-variant uppercase tracking-widest">
+                    DASE Evaluation ({daseDetail.evaluationCount} sessions scored)
+                  </h3>
+                  <button
+                    onClick={handleGetRecommendation}
+                    disabled={recommendationLoading}
+                    className="text-xs font-heading font-semibold px-3 py-1.5 rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-white transition-all disabled:opacity-50"
+                  >
+                    {recommendationLoading ? "Thinking…" : "Get teaching suggestions"}
+                  </button>
+                </div>
+
+                {Object.keys(daseDetail.errorBreakdownCombined).length > 0 && (
+                  <div>
+                    <p className="text-xs text-on-surface-variant mb-2">Why wrong answers happen (across all sessions)</p>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(daseDetail.errorBreakdownCombined).map(([label, count]) => (
+                        <span key={label} className="text-xs font-body bg-surface-container-low px-3 py-1.5 rounded-full">
+                          {label.replace(/_/g, " ")}: <strong>{count}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {recommendation && (
+                  <div className="bg-primary-container/20 rounded-2xl p-4 text-sm text-on-surface font-body whitespace-pre-line">
+                    {recommendation}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-on-surface-variant text-center py-4 text-sm">
+                No DASE evaluation yet for this student — one is computed after their first scored quiz session.
+              </p>
             )}
           </div>
         )}

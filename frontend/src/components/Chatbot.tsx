@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../services/api';
 import { auth } from '../services/firebase';
+import { useProfile } from '../hooks/useProfile';
+import { scoringProfile } from '../types/profile';
 import type { Sentiment } from './Eye';
 
 interface Message {
@@ -15,6 +17,7 @@ interface ChatbotProps {
 }
 
 const Chatbot: React.FC<ChatbotProps> = ({ onSentiment, gradeLevel, readingDifficulty }) => {
+  const { profile } = useProfile();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -45,6 +48,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ onSentiment, gradeLevel, readingDiffi
         session_id: sessionId,
         grade_level: gradeLevel ?? null,
         reading_difficulty: readingDifficulty ?? null,
+        profile: scoringProfile(profile) !== 'default' ? scoringProfile(profile) : null,
       });
       const reply = response.data?.response || response.data?.reply || "I'm not sure how to respond to that.";
       const botMessage: Message = { text: reply, sender: 'bot' };

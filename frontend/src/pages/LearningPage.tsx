@@ -4,11 +4,23 @@ import api from '../services/api';
 import Eye from '../components/Eye';
 import type { Sentiment } from '../components/Eye';
 import Chatbot from '../components/Chatbot';
+import { useProfile } from '../hooks/useProfile';
+import { scoringProfile } from '../types/profile';
+
+interface ImageDescription {
+  page: number;
+  name: string;
+  description: string;
+  degraded: boolean;
+}
 
 const LearningPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { text, grade_level, reading_difficulty } = location.state || { text: '', grade_level: null, reading_difficulty: null };
+  const { text, grade_level, reading_difficulty, images } = location.state || {
+    text: '', grade_level: null, reading_difficulty: null, images: [] as ImageDescription[],
+  };
+  const { profile, loading: profileLoading } = useProfile();
   const [latestSentiment, setLatestSentiment] = React.useState<Sentiment | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
 
@@ -22,8 +34,13 @@ const LearningPage: React.FC = () => {
   const [isPlaying, setIsPlaying] = React.useState(false);
 
   React.useEffect(() => {
-    if (text) {
-      api.post('/simplify-text/', { text, grade_level: grade_level ?? null, reading_difficulty: reading_difficulty ?? null })
+    if (text && !profileLoading) {
+      api.post('/simplify-text/', {
+        text,
+        grade_level: grade_level ?? null,
+        reading_difficulty: reading_difficulty ?? null,
+        profile: scoringProfile(profile),
+      })
         .then((response) => {
           const simplified = response.data.simplified_text;
           setSimplifiedText(simplified);
@@ -33,7 +50,17 @@ const LearningPage: React.FC = () => {
         })
         .catch((error) => console.error('Error simplifying text:', error));
     }
-  }, [text, grade_level, reading_difficulty]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, grade_level, reading_difficulty, profileLoading]);
+
+  // Auto-start reading once content is ready, when the student has "read aloud
+  // automatically" on in Settings.
+  React.useEffect(() => {
+    if (simplifiedText && !profileLoading && profile.prefs.ttsEnabled) {
+      setIsPlaying(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simplifiedText, profileLoading]);
 
   React.useEffect(() => {
     if (sentences.length > 0) {
@@ -87,7 +114,7 @@ const LearningPage: React.FC = () => {
     if ('speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance();
       utterance.lang = 'en-US';
-      utterance.rate = 1;
+      utterance.rate = profile.prefs.ttsRate || 1;
       utterance.text = highlightMode === 'word'
         ? words[currentIndex]
         : sentences[currentSentenceIndex].join(' ');
@@ -96,6 +123,20 @@ const LearningPage: React.FC = () => {
       alert('Text-to-speech not supported in your browser.');
     }
   };
+
+  // Speaks each word/sentence as it's highlighted during playback, so
+  // "read aloud automatically" actually reads aloud rather than only
+  // advancing the highlight.
+  React.useEffect(() => {
+    if (!isPlaying || !('speechSynthesis' in window)) return;
+    const textToSpeak = highlightMode === 'word' ? words[currentIndex] : sentences[currentSentenceIndex]?.join(' ');
+    if (!textToSpeak) return;
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
+    utterance.lang = 'en-US';
+    utterance.rate = profile.prefs.ttsRate || 1;
+    speechSynthesis.speak(utterance);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, currentIndex, currentSentenceIndex, highlightMode]);
 
   const navigateToQuiz = useCallback(() => {
     if (simplifiedText) navigate('/quiz', { state: { text: simplifiedText } });
@@ -165,6 +206,23 @@ const LearningPage: React.FC = () => {
                 style={{ width: sentences.length > 0 ? `${((currentSentenceIndex + 1) / sentences.length) * 100}%` : "0%" }}></div>
             </div>
           </div>
+
+          {/* Image descriptions (Settings > Describe images in PDFs) */}
+          {images && images.length > 0 && (
+            <div className="glass-card rounded-[2rem] p-5 flex flex-col gap-3">
+              <span className="font-heading text-xs font-semibold text-on-surface-variant uppercase tracking-widest">
+                Images in this document
+              </span>
+              {images.map((img: ImageDescription, i: number) => (
+                <div key={i} className="bg-surface-container-low rounded-xl p-3">
+                  <p className="text-[10px] text-on-surface-variant uppercase tracking-wider font-heading">
+                    Page {img.page}
+                  </p>
+                  <p className="text-sm text-on-surface font-body mt-1">{img.description}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Reading Module */}

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "../services/api";
+import { useProfile } from "../hooks/useProfile";
+import { scoringProfile } from "../types/profile";
 
 interface Question {
   question: string;
@@ -14,6 +16,7 @@ const QuizPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { text } = location.state || { text: "" };
+  const { profile, gradeLevel, loading: profileLoading } = useProfile();
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -27,9 +30,13 @@ const QuizPage: React.FC = () => {
   const MAX_QUESTIONS = 10;
 
   useEffect(() => {
-    if (text) {
+    if (text && !profileLoading) {
       api
-        .post("/generate-quiz/", { text })
+        .post("/generate-quiz/", {
+          text,
+          profile: scoringProfile(profile),
+          grade_level: gradeLevel ?? undefined,
+        })
         .then((res) => {
           const data = res.data.questions.slice(0, MAX_QUESTIONS);
           setQuestions(data);
@@ -37,7 +44,8 @@ const QuizPage: React.FC = () => {
         .catch((err) => console.error("Error fetching quiz:", err))
         .finally(() => setLoading(false));
     }
-  }, [text]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, profileLoading]);
 
   const totalQuestions = questions.length;
 

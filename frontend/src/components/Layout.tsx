@@ -1,26 +1,15 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useAuthState } from "react-firebase-hooks/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "../services/firebase";
+import { useProfile } from "../hooks/useProfile";
 
 const AUTH_PATHS = ["/login", "/register", "/"];
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { pathname } = useLocation();
-  const [user] = useAuthState(auth);
-  const [role, setRole] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (!user) { setRole(null); return; }
-    const fetch = async () => {
-      try {
-        const snap = await getDoc(doc(db, "users", user.uid));
-        setRole(snap.exists() ? snap.data()?.role || "student" : "student");
-      } catch { setRole("student"); }
-    };
-    fetch();
-  }, [user]);
+  // Also applies the signed-in student's accessibility prefs (font scale,
+  // high contrast, dyslexia font, reduced motion) to <html> on every page,
+  // not just when visiting Settings.
+  const { user, role } = useProfile();
 
   const isAuthPage = AUTH_PATHS.includes(pathname);
 
@@ -35,6 +24,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     { to: "/upload", label: "Upload", icon: "upload_file", roles: ["student"] },
     { to: "/learning", label: "Learning", icon: "menu_book", roles: ["student"] },
     { to: "/quiz", label: "Quiz", icon: "quiz", roles: ["student"] },
+    { to: "/settings", label: "Settings", icon: "tune", roles: ["student"] },
   ];
 
   const visibleNav = navItems.filter((n) => !n.roles || !role || n.roles.includes(role));

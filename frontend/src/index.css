@@ -4,10 +4,52 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --font-scale: 1;
+}
+
+html {
+  font-size: calc(100% * var(--font-scale));
+}
+
 body {
   background-color: #f8f9ff;
   color: #0b1c30;
   font-family: 'Atkinson Hyperlegible Next', sans-serif;
+}
+
+/* Accessibility settings (from master's SettingsPage / types/profile.ts applyPrefs) */
+
+html.high-contrast body {
+  background-color: #ffffff;
+  color: #000000;
+}
+html.high-contrast .glass-card {
+  background: #ffffff;
+  border-color: #000000;
+  border-width: 2px;
+}
+html.high-contrast a,
+html.high-contrast button {
+  outline-offset: 2px;
+}
+
+html.dyslexia-font body,
+html.dyslexia-font input,
+html.dyslexia-font textarea,
+html.dyslexia-font select {
+  font-family: 'Atkinson Hyperlegible Next', Verdana, sans-serif;
+  letter-spacing: 0.02em;
+  line-height: 1.6;
+}
+
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
 }
 
 @layer utilities {

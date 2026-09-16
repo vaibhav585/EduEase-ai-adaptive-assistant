@@ -39,4 +39,4 @@ LOG_FILE = BASE_DIR / "logs.jsonl"
 # Firebase project the frontend authenticates against — tokens are verified
 # against Google public keys, not the service-account key, so this can differ
 # from whatever project serviceAccountKey.json belongs to.
-FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "eduease-b955c")
+FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "ai-learning-app-3025f")

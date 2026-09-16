@@ -51,6 +51,15 @@ export interface Profile {
   prefs: Prefs;
 }
 
+export interface Consent {
+  dataCollection: boolean;
+  webcam: boolean;
+  disabilityDisclosure: boolean;
+  version: number;
+}
+
+export const CONSENT_VERSION = 1;
+
 export const DEFAULT_PREFS: Prefs = {
   fontScale: 1,
   highContrast: false,

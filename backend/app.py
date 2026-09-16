@@ -1,17 +1,15 @@
 from config import GOOGLE_API_KEY
 
-from fastapi import FastAPI, File, UploadFile, Form, Body, Depends, HTTPException, Request
+from fastapi import FastAPI, File, UploadFile, Form, Body, Depends, HTTPException
 from firebase_admin import auth as firebase_auth
 from PyPDF2 import PdfReader
 import io
 import json
 import re
-import spacy
-from firebase_config import db, verify_firebase_token
+from firebase_config import db
 import random
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from langchain_classic.chains import ConversationChain
 from langchain_classic.memory import ConversationBufferMemory
 from cachetools import TTLCache
@@ -21,8 +19,13 @@ from ingestion import ingest, retrieve
 from datetime import datetime, timezone
 from models.schemas import TurnSentiment, ChatbotResponse, QuizResultLog, SessionTelemetryLog, CreateUserRequest
 
+# Extracted to auth.py during the master/main integration so the new DASE/
+# telemetry/voice routers can require the same real token verification
+# without importing back into this file.
+from auth import verify_user, verify_role
+from services import image_describer, nlp_simplify, quiz_gen
+
 app = FastAPI()
-nlp = spacy.load("en_core_web_sm")
 
 ADMIN_EMAIL = "admin@test.com"
 ADMIN_PASSWORD = "admin@123"
@@ -186,57 +189,6 @@ def _validate_output(text: str) -> bool:
     return not _TOXIC_PHRASES.search(text)
 
 
-async def verify_user(request: Request) -> dict:
-    header = request.headers.get("Authorization")
-    if not header or not header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid token")
-    token = header[7:]
-    try:
-        decoded = await run_in_threadpool(verify_firebase_token, token)
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    # Firebase tokens use 'sub' for UID; normalise to 'uid' for the rest of the app
-    if "uid" not in decoded:
-        decoded = {**decoded, "uid": decoded.get("sub", "")}
-    return decoded
-
-
-# Maps known demo email addresses to their intended roles.
-# Auto-provisioning uses this so teacher/admin logins work on first access
-# even when their Firestore profile doesn't exist yet.
-_DEMO_ROLE_MAP: dict[str, str] = {
-    "admin@test.com": "admin",
-    "teacher1@test.com": "teacher",
-    "teacher2@test.com": "teacher",
-    "teacher3@test.com": "teacher",
-}
-
-
-def verify_role(required_role: str):
-    async def _check(user: dict = Depends(verify_user)) -> dict:
-        uid = user.get("uid")
-        email = user.get("email", "")
-        if not uid:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        try:
-            user_doc = db.collection("users").document(uid).get()
-        except Exception:
-            raise HTTPException(status_code=500, detail="Failed to verify role")
-        if not user_doc.exists:
-            # Auto-provision: first login creates a profile with the correct role
-            role = _DEMO_ROLE_MAP.get(email, "student")
-            db.collection("users").document(uid).set({"email": email, "role": role})
-            if role != required_role:
-                raise HTTPException(status_code=403, detail="Insufficient permissions")
-            user["role"] = role
-            return user
-        role = user_doc.to_dict().get("role", "")
-        if role != required_role:
-            raise HTTPException(status_code=403, detail="Insufficient permissions")
-        user["role"] = role
-        return user
-    return _check
-
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.0-flash",
     google_api_key=GOOGLE_API_KEY,
@@ -284,75 +236,6 @@ def _score_sentiment(user_text: str, bot_reply: str) -> TurnSentiment:
         return _DEFAULT_SENTIMENT
 
 
-_SIMPLIFY_SYSTEM = (
-    "You are a patient, expert special education teacher who rewrites text so "
-    "neurodivergent children (ADHD, Autism, Dyslexia, Auditory Processing Disorders) "
-    "can read and understand it independently.\n\n"
-    "STRICT RULES — never break these:\n"
-    "1. Every sentence MUST be short and declarative — {max_words} words maximum.\n"
-    "2. Use only concrete, everyday vocabulary a {grade_desc} student already knows. "
-    "Replace every hard word with a simpler synonym.\n"
-    "3. NEVER use metaphors, idioms, sarcasm, or passive voice. "
-    "Literal thinkers must understand every sentence at face value.\n"
-    "4. Each sentence contains exactly ONE idea. "
-    "If a sentence has two ideas, split it into two sentences.\n"
-    "5. Keep the SAME meaning as the original — do not add opinions, examples, or new facts.\n"
-    "6. Output ONLY the simplified plain text. No bullet points, no headings, no markdown, "
-    "no numbered lists, no commentary. Just clean sentences separated by periods and spaces.\n"
-    "7. When the topic changes, start a new paragraph (blank line) so the reader's eye "
-    "gets a natural pause.\n"
-    "8. If the original has important names, dates, or numbers, keep them exactly as-is.\n"
-)
-
-_GRADE_PROFILES: dict[str, dict[str, str | int]] = {
-    "1": {"max_words": 8, "grade_desc": "1st-grade (age 6-7)"},
-    "2": {"max_words": 8, "grade_desc": "2nd-grade (age 7-8)"},
-    "3": {"max_words": 10, "grade_desc": "3rd-grade (age 8-9)"},
-    "4": {"max_words": 10, "grade_desc": "4th-grade (age 9-10)"},
-    "5": {"max_words": 12, "grade_desc": "5th-grade (age 10-11)"},
-    "6": {"max_words": 12, "grade_desc": "6th-grade (age 11-12)"},
-    "7": {"max_words": 15, "grade_desc": "7th-grade (age 12-13)"},
-    "8": {"max_words": 15, "grade_desc": "8th-grade (age 13-14)"},
-}
-
-_DIFFICULTY_HINTS: dict[str, str] = {
-    "easy": "Use the simplest possible words. Prefer one-syllable words whenever you can.",
-    "medium": "Use simple words but you may include common two-syllable words.",
-    "hard": "You may use grade-appropriate academic vocabulary if there is no simpler alternative.",
-}
-
-
-def _build_simplify_prompt(
-    text: str,
-    grade_level: str | None,
-    reading_difficulty: str | None,
-) -> list:
-    profile = _GRADE_PROFILES.get(
-        str(grade_level or ""), _GRADE_PROFILES["4"],
-    )
-    system = _SIMPLIFY_SYSTEM.format(**profile)
-    diff_hint = _DIFFICULTY_HINTS.get(reading_difficulty or "", _DIFFICULTY_HINTS["medium"])
-    system += f"\nAdditional vocabulary guidance: {diff_hint}\n"
-
-    return [
-        SystemMessage(content=system),
-        HumanMessage(content=f"Simplify the following text:\n\n{text}"),
-    ]
-
-
-def _simplify_via_llm(
-    text: str,
-    grade_level: str | None = None,
-    reading_difficulty: str | None = None,
-) -> str:
-    messages = _build_simplify_prompt(text, grade_level, reading_difficulty)
-    result = llm.invoke(messages)
-    content = result.content
-    if not isinstance(content, str) or not content.strip():
-        raise ValueError("LLM returned empty simplification")
-    return content.strip()
-
-
 _session_cache: TTLCache[str, ConversationChain] = TTLCache(maxsize=256, ttl=3600)
 _cache_lock = threading.Lock()
 
@@ -378,7 +261,11 @@ MAX_PDF_PAGES = 20
 
 
 @app.post("/upload-pdf/")
-async def upload_pdf(file: UploadFile = File(...), _user: dict = Depends(verify_user)):
+async def upload_pdf(
+    file: UploadFile = File(...),
+    describeImages: bool = Form(False),
+    _user: dict = Depends(verify_user),
+):
     pdf_data = await file.read()
     if len(pdf_data) > MAX_PDF_SIZE:
         raise HTTPException(status_code=400, detail="File exceeds 5 MB size limit")
@@ -397,38 +284,42 @@ async def upload_pdf(file: UploadFile = File(...), _user: dict = Depends(verify_
         chunks = await run_in_threadpool(ingest, text, file.filename or "pdf")
     else:
         chunks = 0
-    return {"text": text, "chunks_ingested": chunks}
+
+    # Opt-in — costs one Gemini Vision call per substantial image, only blind
+    # and low-vision students need it. PdfReader is already open above, so
+    # re-reading it here costs nothing extra.
+    images: list[dict] = []
+    if describeImages:
+        images = await run_in_threadpool(image_describer.describe_pdf_images, pdf_reader)
+
+    return {"text": text, "chunks_ingested": chunks, "images": images}
 
 @app.post("/simplify-text/")
 async def simplify_text(
     text: str = Body(...),
+    profile: str = Body("default"),
     grade_level: str | None = Body(None),
     reading_difficulty: str | None = Body(None),
     _user: dict = Depends(verify_user),
 ):
+    """Merges two axes built separately by the two source branches: grade
+    level + reading difficulty (main) and disability profile (master) — see
+    services/nlp_simplify.py for how they compose into one prompt."""
     if not text or not text.strip():
         raise HTTPException(status_code=400, detail="Text body is empty")
-    try:
-        simplified_text = await run_in_threadpool(
-            _simplify_via_llm, text, grade_level, reading_difficulty,
-        )
-    except Exception:
-        simplified_text = _spacy_fallback(text)
-    return {"simplified_text": simplified_text}
+    result = await run_in_threadpool(
+        nlp_simplify.simplify_text, text, profile, grade_level, reading_difficulty,
+    )
+    return {
+        # Legacy key the current frontend reads. Keep until every caller uses `simplified`.
+        "simplified_text": result["simplified"],
+        **result,
+    }
 
 
-def _spacy_fallback(text: str) -> str:
-    doc = nlp(text)
-    result = ""
-    for sent in doc.sents:
-        tokens = []
-        for token in sent:
-            if token.pos_ in ("NOUN", "VERB", "ADJ", "ADV"):
-                tokens.append(token.lemma_)
-            else:
-                tokens.append(token.text)
-        result += " ".join(tokens).strip() + ". "
-    return result.strip()
+@app.get("/simplify-profiles/")
+async def simplify_profiles(_user: dict = Depends(verify_user)):
+    return {"profiles": nlp_simplify.available_profiles()}
 
 @app.post("/add-content/")
 async def add_content(text: str = Form(...), _user: dict = Depends(verify_user)):
@@ -452,112 +343,37 @@ async def get_content(_user: dict = Depends(verify_user)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-_QUIZ_SYSTEM_PROMPT = (
-    "You are an educational quiz generator for children. Given a passage, generate EXACTLY 9 questions.\n"
-    "Output ONLY a raw JSON array — no markdown fences, no commentary.\n\n"
-    "MANDATORY DISTRIBUTION — you MUST generate exactly:\n"
-    "  - 3 questions with question_type \"mcq\"\n"
-    "  - 3 questions with question_type \"true_false\"\n"
-    "  - 3 questions with question_type \"fill_blank\"\n"
-    "Shuffle them randomly in the array. Do NOT group by type.\n\n"
-    "SCHEMA — every object MUST have exactly these 5 keys:\n"
-    '  "question"       : string — the question text\n'
-    '  "options"         : string[] — answer choices\n'
-    '  "answer"          : string — correct choice (MUST match one element in options exactly)\n'
-    '  "question_type"   : string — one of "mcq", "true_false", "fill_blank"\n'
-    '  "topic"           : string — broad academic category (2-5 words, e.g. "Cell Biology", "Gravity & Motion")\n\n'
-    "FORMAT RULES per type:\n"
-    '  mcq:        "options" has exactly 4 choices. One is correct.\n'
-    '  true_false: "options" is exactly ["True", "False"]. "answer" is "True" or "False".\n'
-    '  fill_blank: "question" contains "______" for the blank. "options" has exactly 4 choices.\n\n'
-    "TOPIC RULE: Never quote raw words from the passage. Use standardized academic domain names.\n"
-)
-
-
-def _generate_quiz_via_llm(text: str) -> list[dict]:
-    prompt = f"{_QUIZ_SYSTEM_PROMPT}\nPassage:\n{text[:3000]}"
-    result = llm.invoke([HumanMessage(content=prompt)])
-    raw = result.content.strip()
-    raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    questions = json.loads(raw)
-    if not isinstance(questions, list):
-        return []
-    valid = []
-    for q in questions:
-        if not all(k in q for k in ("question", "options", "answer", "question_type", "topic")):
-            continue
-        if not isinstance(q["options"], list) or len(q["options"]) < 2:
-            continue
-        if q["answer"] not in q["options"]:
-            continue
-        if q["question_type"] not in ("mcq", "true_false", "fill_blank"):
-            continue
-        valid.append(q)
-    return valid
-
-
-def _generate_quiz_spacy_fallback(text: str) -> list[dict]:
-    doc = nlp(text)
-    questions: list[dict] = []
-    all_words = [t.text for t in doc if t.pos_ in ("NOUN", "VERB", "ADJ")]
-    eligible = [s for s in doc.sents if len(s.text.split()) > 5]
-
-    for i, sent in enumerate(eligible):
-        blanks = [t.text for t in sent if t.pos_ in ("NOUN", "VERB", "ADJ")]
-        if not blanks:
-            continue
-        blank = random.choice(blanks)
-        chunks = [c.text.title() for c in nlp(sent.text).noun_chunks if len(c.text.split()) >= 2]
-        topic = chunks[0] if chunks else "General Knowledge"
-
-        qtype = i % 3
-        if qtype == 0:
-            question_text = sent.text.replace(blank, "______")
-            options = [blank]
-            distractors = [w for w in all_words if w != blank]
-            random.shuffle(distractors)
-            for _ in range(3):
-                options.append(distractors.pop() if distractors else f"Option {len(options)}")
-            random.shuffle(options)
-            questions.append({
-                "question": question_text, "options": options, "answer": blank,
-                "question_type": "fill_blank", "topic": topic,
-            })
-        elif qtype == 1:
-            questions.append({
-                "question": f"True or False: {sent.text}",
-                "options": ["True", "False"], "answer": "True",
-                "question_type": "true_false", "topic": topic,
-            })
-        else:
-            nouns = [t.text for t in sent if t.pos_ == "NOUN" and len(t.text) > 2]
-            target = nouns[0] if nouns else blank
-            q_text = f"Which of the following is discussed in this context?" if len(sent.text) > 80 else f"Which term relates to: \"{sent.text[:60]}\"?"
-            options = [target]
-            distractors = [w for w in all_words if w != target and len(w) > 2]
-            random.shuffle(distractors)
-            for _ in range(3):
-                options.append(distractors.pop() if distractors else f"Option {len(options)}")
-            random.shuffle(options)
-            questions.append({
-                "question": q_text, "options": options, "answer": target,
-                "question_type": "mcq", "topic": topic,
-            })
-    return questions
-
-
 @app.post("/generate-quiz/")
-async def generate_quiz(text: str = Body(..., embed=True), _user: dict = Depends(verify_user)):
-    try:
-        questions = await run_in_threadpool(_generate_quiz_via_llm, text)
-    except Exception:
-        questions = []
-    if not questions:
-        try:
-            questions = _generate_quiz_spacy_fallback(text)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Error generating quiz: {e}")
-    return {"questions": questions}
+async def generate_quiz(
+    text: str = Body(..., embed=True),
+    profile: str = Body("default", embed=True),
+    grade_level: str | None = Body(None, embed=True),
+    count: int = Body(9, embed=True),
+    _user: dict = Depends(verify_user),
+):
+    """Merges main's 3-question-type distribution (mcq/true_false/fill_blank)
+    with master's disability-adapted item formats and simpler-variant
+    generation — see services/quiz_gen.py."""
+    return await run_in_threadpool(
+        quiz_gen.generate_quiz, text, profile, max(9, min(count, 20)), grade_level,
+    )
+
+# One-line style hints folded into the RAG prompt, not a full rewrite of the
+# chatbot pipeline — the disability-profile system built for simplify/quiz
+# (services/nlp_simplify.py PROFILES) is a full rewrite ruleset, too heavy to
+# repeat on every chat turn. This is a lighter touch: nudge the SAME
+# RAG-grounded, safety-checked, sentiment-scored answer toward the right style.
+_CHAT_PROFILE_HINTS: dict[str, str] = {
+    "dyslexia": "Answer in short sentences, one idea each. Avoid nested clauses.",
+    "deaf": "Answer in short, literal sentences. No idioms or figurative language.",
+    "autism": "Be literal and direct. No sarcasm, idioms, or rhetorical questions.",
+    "adhd": "Lead with the answer in the first sentence, then explain briefly.",
+    "blind": "Never reference visual layout. Spell out symbols in words.",
+    "dyscalculia": "Describe any numbers in concrete, countable terms.",
+    "intellectual": "Use very short sentences and the simplest common words.",
+    "anxiety": "Use a calm, encouraging tone. No urgency language.",
+}
+
 
 @app.post("/chatbot/", response_model=ChatbotResponse)
 async def chatbot(
@@ -565,6 +381,7 @@ async def chatbot(
     session_id: str = Body(...),
     grade_level: str | None = Body(None),
     reading_difficulty: str | None = Body(None),
+    profile: str | None = Body(None),
     _user: dict = Depends(verify_user),
 ):
     input_safe, sanitized_text = _validate_input(text)
@@ -582,7 +399,14 @@ async def chatbot(
         context_docs = []
 
     context = "\n\n".join(doc.page_content for doc in context_docs) if context_docs else ""
-    prompt = f"Context:\n{context}\n\nQuestion: {sanitized_text}" if context else sanitized_text
+    style_hint = _CHAT_PROFILE_HINTS.get(profile or "", "")
+    prompt_parts = []
+    if context:
+        prompt_parts.append(f"Context:\n{context}")
+    if style_hint:
+        prompt_parts.append(f"Style guidance: {style_hint}")
+    prompt_parts.append(f"Question: {sanitized_text}")
+    prompt = "\n\n".join(prompt_parts)
 
     try:
         chain = _get_chain(session_id)
@@ -810,6 +634,21 @@ async def get_student_analytics(student_id: str, _user: dict = Depends(verify_ro
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# New from the master branch (disability-adaptive scoring): DASE evaluation,
+# granular per-question telemetry (feeds DASE — distinct from this file's own
+# /analytics/log-quiz and log-session, which are coarser summaries the
+# original teacher dashboard still reads), voice navigation, and the
+# teacher-roster-scoped DASE analytics that replaces the old
+# /teacher/analytics/{id} for the new dashboard. All auth-gated, same pattern
+# as every endpoint above.
+from routers import analytics as dase_analytics
+from routers import evaluation, telemetry, voice_intent
+
+app.include_router(evaluation.router, prefix="/api")
+app.include_router(telemetry.router, prefix="/api")
+app.include_router(voice_intent.router, prefix="/api")
+app.include_router(dase_analytics.router, prefix="/api")
 
 from starlette.middleware.cors import CORSMiddleware
 origins = [

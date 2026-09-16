@@ -269,7 +269,11 @@ def generate_quiz(
         system = f"{BASE_RULES}\nSTUDENT PROFILE:\n{FORMATS[profile]}\n\n{SCHEMA_HINT}"
         if grade_level:
             system += f"\n\nThis student reads at grade level {grade_level}. Keep vocabulary appropriate."
-        raw = call_json(system, f"Passage:\n\n{text[:8000]}")
+        # retries=2: the merged schema (9 questions x full disability-format
+        # fields x a per-item simpler-variant) is large enough that Gemini
+        # occasionally emits a malformed field even when otherwise on-topic;
+        # one repair attempt wasn't enough headroom before falling back to spaCy.
+        raw = call_json(system, f"Passage:\n\n{text[:8000]}", retries=2)
         if not isinstance(raw, list):
             raw = raw.get("questions", []) if isinstance(raw, dict) else []
         return [_normalise(it, i) for i, it in enumerate(q for q in raw if _valid(q))]

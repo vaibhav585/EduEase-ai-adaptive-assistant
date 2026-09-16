@@ -24,7 +24,11 @@ from config import GEMINI_MODEL, GOOGLE_API_KEY, GROQ_API_KEY, GROQ_MODEL
 llm = ChatGoogleGenerativeAI(
     model=GEMINI_MODEL,
     google_api_key=GOOGLE_API_KEY,
-    max_tokens=4096,
+    # 4096 was enough for master's original quiz schema, but the merged schema
+    # (9 questions x full disability-format fields x a full simpler-variant per
+    # item) produces much bigger JSON — Gemini was hitting the cap mid-string
+    # and getting silently treated as invalid JSON, falling back to spaCy.
+    max_tokens=8192,
     temperature=0.3,  # low: we want consistent reformulation, not creativity
     # Default max_retries=6 means a DAILY quota 429 (which cannot succeed on
     # retry within the same day) makes the student wait 2+4+8+16+32 = 62s before
@@ -82,7 +86,7 @@ def _call_groq(system: str, user: str) -> str:
             {"role": "user", "content": user},
         ],
         temperature=0.3,
-        max_tokens=4096,
+        max_tokens=8192,
     )
     return (completion.choices[0].message.content or "").strip()
 
